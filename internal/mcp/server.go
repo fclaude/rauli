@@ -86,6 +86,12 @@ type session struct {
 	mu       sync.Mutex
 	inflight map[string]*run
 	wg       sync.WaitGroup
+
+	// queue holds tool calls in the order they arrived. One worker runs them one
+	// at a time, because a browser tab is a single thing to act on: a click that
+	// loads a page must finish before the call after it looks at that page. The
+	// server still reads while a call runs, which is how a cancellation is heard.
+	queue chan func()
 }
 
 // Serve reads requests from in until it ends or ctx is cancelled, and writes
@@ -96,7 +102,14 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ss := &session{srv: s, out: out, inflight: map[string]*run{}}
+	ss := &session{srv: s, out: out, inflight: map[string]*run{}, queue: make(chan func(), 1024)}
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		for run := range ss.queue {
+			run()
+		}
+	}()
 	lines := make(chan []byte)
 	errc := make(chan error, 1)
 	go func() {
@@ -145,6 +158,8 @@ loop:
 	// left and wait for it.
 	cancel()
 	ss.wg.Wait()
+	close(ss.queue)
+	<-workerDone
 	return result
 }
 
@@ -269,8 +284,8 @@ func (ss *session) known(name string) bool {
 	return false
 }
 
-// call runs a tool on its own goroutine, so a slow page never stops the server
-// from reading the next message, in particular a cancellation.
+// call queues a tool call. It returns at once, so a slow page never stops the
+// server from reading the next message, in particular a cancellation.
 func (ss *session) call(ctx context.Context, req request) {
 	var p struct {
 		Name      string          `json:"name"`
@@ -297,9 +312,16 @@ func (ss *session) call(ctx context.Context, req request) {
 	ss.mu.Unlock()
 
 	ss.wg.Add(1)
-	go func() {
+	ss.queue <- func() {
 		defer ss.wg.Done()
 		defer cancel()
+		if cctx.Err() != nil {
+			// Withdrawn while it waited its turn, or the server is stopping.
+			ss.mu.Lock()
+			delete(ss.inflight, key)
+			ss.mu.Unlock()
+			return
+		}
 		res, err := ss.srv.Backend.Call(cctx, p.Name, p.Arguments)
 
 		ss.mu.Lock()
@@ -313,7 +335,7 @@ func (ss *session) call(ctx context.Context, req request) {
 			return
 		}
 		ss.reply(req.ID, toResult(res, err))
-	}()
+	}
 }
 
 // toResult shapes a tool's outcome for the client. A tool that fails is a

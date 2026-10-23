@@ -430,3 +430,69 @@ func TestARealBrowserThroughTheProtocol(t *testing.T) {
 		t.Logf("diagnostics: %s", c.logbuf.String())
 	}
 }
+
+// A client may send several requests without waiting for each answer. They run
+// in the order they were sent, one at a time: a click that loads a page has to
+// finish before the call after it looks at that page. Before calls were queued
+// each ran on its own goroutine and the order was whatever the scheduler chose.
+func TestPipelinedCallsRunOneAtATimeInTheOrderTheyArrive(t *testing.T) {
+	f := newFake()
+	c := start(t, f)
+	initialize(c, "2025-06-18")
+	call := func(id int, name string, args map[string]any) {
+		c.send(map[string]any{"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+	}
+	call(40, "slow", nil)
+	select {
+	case <-f.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the slow tool never started")
+	}
+	for i := 41; i <= 45; i++ {
+		call(i, "echo", map[string]any{"Text": fmt.Sprint("call ", i)})
+	}
+	// None of the later calls may start while the first is still running.
+	time.Sleep(300 * time.Millisecond)
+	f.mu.Lock()
+	running := len(f.called)
+	f.mu.Unlock()
+	if running != 1 {
+		t.Fatalf("%d calls had started while the first was still running", running)
+	}
+	close(f.release)
+	for want := 40; want <= 45; want++ {
+		r := c.read()
+		if r["id"] != float64(want) {
+			t.Fatalf("replies came out of order: wanted %d, got %v", want, r["id"])
+		}
+	}
+}
+
+func TestACallWithdrawnWhileItWaitsItsTurnNeverRuns(t *testing.T) {
+	f := newFake()
+	c := start(t, f)
+	initialize(c, "2025-06-18")
+	call := func(id int, name string, args map[string]any) {
+		c.send(map[string]any{"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+	}
+	call(50, "slow", nil)
+	<-f.started
+	call(51, "echo", map[string]any{"Text": "withdrawn"})
+	call(52, "echo", map[string]any{"Text": "kept"})
+	c.send(map[string]any{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": map[string]any{"requestId": 51}})
+	time.Sleep(200 * time.Millisecond)
+	close(f.release)
+	if r := c.read(); r["id"] != float64(50) {
+		t.Fatalf("first reply %v", r)
+	}
+	if r := c.read(); r["id"] != float64(52) {
+		t.Fatalf("the withdrawn call must not answer; the next reply was %v", r)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, line := range f.called {
+		if strings.Contains(line, "withdrawn") {
+			t.Fatalf("a call withdrawn before its turn ran anyway: %v", f.called)
+		}
+	}
+}
