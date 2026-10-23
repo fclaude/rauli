@@ -184,6 +184,15 @@ func (s *Session) Tools() []Tool {
 	return out
 }
 
+// Catalogue lists the built-in tools in name order without starting a browser,
+// so that a reference can be written, or a listing shown, on any machine. The
+// tools it returns describe themselves but cannot be run.
+func Catalogue() []Tool {
+	out := builtin()
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // Page is the tab the tools act on, opening one if there is none yet.
 func (s *Session) Page(ctx context.Context) (*chrome.Page, error) {
 	s.mu.Lock()

@@ -520,3 +520,15 @@ func TestAPersonCanTakeTheBrowserAndGiveItBack(t *testing.T) {
 	}
 	s.Release()
 }
+
+func TestCatalogueListsTheToolsInOrderWithoutABrowser(t *testing.T) {
+	c := Catalogue()
+	if len(c) != len(builtin()) {
+		t.Fatalf("the catalogue has %d tools, the built-in set %d", len(c), len(builtin()))
+	}
+	for i := 1; i < len(c); i++ {
+		if c[i-1].Name >= c[i].Name {
+			t.Fatalf("%s should come before %s", c[i-1].Name, c[i].Name)
+		}
+	}
+}
