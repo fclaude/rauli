@@ -208,7 +208,7 @@ func TestTypeAndSubmitAForm(t *testing.T) {
 	if !strings.Contains(text, "Results for raulí trees") {
 		info, _ := p.Info(ctx)
 		value, _ := p.Eval(ctx, "document.getElementById('q') ? document.getElementById('q').value : '(no field: the page changed)'")
-		t.Fatalf("the form was not submitted with the typed text.\ntab: %+v\nfield holds: %s\nconsole: %q\npage text: %q", info, value, p.Console(), text)
+		t.Fatalf("the form was not submitted with the typed text.\ntab: %+v\nfield holds: %s\nconsole: %q\npage text: %q\nsettle: %s", info, value, p.Console(), text, strings.Join(p.settleLog, "\n  "))
 	}
 }
 

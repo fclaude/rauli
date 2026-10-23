@@ -27,6 +27,8 @@ type Page struct {
 	blocked []string
 	dialogs []Dialog
 	closed  bool
+
+	settleLog []string // diagnostic: how the last settle ended
 }
 
 // Dialog is a JavaScript alert, confirm, prompt or beforeunload prompt that a
@@ -320,20 +322,35 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 	stopped, cancelStopped := p.conn.Subscribe(p.session, "Page.frameStoppedLoading")
 	defer cancelStopped()
 
-	window := startWindow(p.responseTime(ctx))
+	t0 := time.Now()
+	var trace []string
+	note := func(f string, a ...any) {
+		trace = append(trace, fmt.Sprintf("%5dms ", time.Since(t0).Milliseconds())+fmt.Sprintf(f, a...))
+		p.mu.Lock()
+		p.settleLog = append([]string(nil), trace...)
+		p.mu.Unlock()
+	}
+	rt := p.responseTime(ctx)
+	window := startWindow(rt)
+	note("responseTime %v window %v", rt, window)
 	if err := act(); err != nil {
 		return err
 	}
+	note("act done")
 	committed := false
 	select {
 	case <-started:
+		note("started")
 	case <-navigated:
 		committed = true
+		note("navigated first")
 	case <-within:
 		// A change of fragment or a pushState has nothing to load.
+		note("within document: return")
 		p.forgetRefs()
 		return nil
 	case <-time.After(window):
+		note("window expired: return")
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -355,10 +372,13 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 		case <-ctx.Done():
 			return fmt.Errorf("waiting for the page to load: %w", ctx.Err())
 		case <-idle:
+			note("idle: return")
 			return nil
 		case <-navigated:
 			committed = true
+			note("navigated")
 		case <-stopped:
+			note("stopped (committed=%v)", committed)
 			if committed {
 				finish()
 			} else if grace == nil {
@@ -367,6 +387,7 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 				grace = time.After(1500 * time.Millisecond)
 			}
 		case <-grace:
+			note("grace over (committed=%v)", committed)
 			if !committed {
 				finish()
 			}
@@ -383,8 +404,10 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 			}
 			switch e.Name {
 			case "load":
+				note("lifecycle load (committed=%v)", committed)
 				finish()
 			case "networkIdle":
+				note("lifecycle networkIdle (loaded=%v)", loaded)
 				if loaded {
 					return nil
 				}
