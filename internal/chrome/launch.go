@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/rauli/internal/cdp"
@@ -137,11 +138,19 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 		}
 	}
 
+	// A browser left behind by a run that was killed is ended first, so the
+	// leftovers of one run never pile up for the next.
+	Reap()
+
 	profile := opts.ProfileDir
 	temp := false
 	if profile == "" {
-		dir, err := os.MkdirTemp("", "rauli-profile-")
+		dir, err := os.MkdirTemp("", profilePrefix)
 		if err != nil {
+			return nil, err
+		}
+		if err := writeOwner(dir); err != nil {
+			_ = os.RemoveAll(dir)
 			return nil, err
 		}
 		profile, temp = dir, true
@@ -175,6 +184,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	args = append(args, "about:blank")
 
 	cmd := exec.Command(path, args...)
+	ownProcess(cmd)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cleanup(profile, temp)
@@ -292,10 +302,15 @@ func cleanup(profile string, temp bool) {
 
 func (b *Browser) kill() {
 	if b.cmd.Process != nil {
+		// The whole group, so helper processes cannot outlive the browser.
+		_ = syscall.Kill(-b.cmd.Process.Pid, syscall.SIGKILL)
 		_ = b.cmd.Process.Kill()
 	}
 	<-b.exited
 }
+
+// Pid is the process id of the browser itself.
+func (b *Browser) Pid() int { return b.cmd.Process.Pid }
 
 // ExitError says how the browser process ended: nil for a clean exit, otherwise
 // the exit status or the signal that ended it. It is only meaningful once Done
@@ -345,6 +360,8 @@ func (b *Browser) Close() error {
 	case <-time.After(5 * time.Second):
 		b.kill()
 	}
+	// Whatever the browser left running in its group goes with it.
+	_ = syscall.Kill(-b.cmd.Process.Pid, syscall.SIGKILL)
 	cleanup(b.profile, b.tempProfile)
 	return nil
 }
