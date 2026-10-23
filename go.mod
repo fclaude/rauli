@@ -5,6 +5,7 @@ go 1.26.10
 require github.com/coder/websocket v1.8.15
 
 require (
+	github.com/fclaude/brote v0.2.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.58.0
