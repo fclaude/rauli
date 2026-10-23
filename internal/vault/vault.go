@@ -9,9 +9,12 @@
 // another site. A login with no origins is refused at creation unless the
 // person says anywhere on purpose.
 //
-// Three backends hold the logins: the operating system's secret store
-// (keyring), an encrypted file (file) and memory (memory, for tests). The
-// vault keeps no logins in memory beyond a single call.
+// Four backends hold the logins: the operating system's secret store
+// (keyring), an encrypted file (file), a program of the person's choosing that
+// prints one field when asked (command), and memory (memory, for tests). The
+// first three keep the values themselves; with the command backend the values
+// stay in the person's password manager and Raulí only knows where each login
+// may be used. The vault keeps no logins in memory beyond a single call.
 package vault
 
 import (
@@ -35,36 +38,96 @@ import (
 // Config is the keychain section of the configuration file.
 //
 //	[keychain]
-//	backend = "file"                       # keyring, file or memory
+//	backend = "file"                       # keyring, file, command or memory
 //	path = "~/.config/rauli/keychain"      # for file
 //	passphrase_env = "RAULI_PASSPHRASE"    # for file: where to read the passphrase
-//	passphrase_command = ["pass", "show", "rauli"]   # or a command that prints it
+//	passphrase_command = ["fetch-secret", "rauli"]   # or a command that prints it
 //	service = "rauli"                      # for keyring
 //
 // The file backend asks for its passphrase on the terminal when neither the
 // environment variable nor the command gives one.
+//
+// The command backend keeps the logins' secrets elsewhere, in a password
+// manager or any program that can print one value. Raulí holds each login's
+// name, fields and origins in the configuration, and runs the command to fetch
+// a single field at the moment it is typed into a page:
+//
+//	[keychain]
+//	backend = "command"
+//	command = ["/usr/local/bin/get-secret"]   # Raulí appends the login and the field
+//	timeout = "10s"                           # optional, 10s by default
+//
+//	[[keychain.handles]]
+//	name = "shop"
+//	fields = ["user", "password", "totp"]
+//	origins = ["https://shop.example.com"]    # or anywhere = true, on purpose
+//
+// For the login "shop" and its field "password" the program is run as
+// get-secret shop password, with RAULI_HANDLE, RAULI_FIELD and RAULI_ORIGIN set
+// in its environment, no standard input, and an empty directory to work in. It
+// prints the value on standard output; one trailing newline is removed, and at
+// most 64 KiB is read. A one-time-code field holds the code itself here, so the
+// program is the one that works it out: a totp field is not a seed, as it is in
+// the other backends. The program is only run for a page the login's origins
+// allow, so a page outside them never reaches it.
 type Config struct {
-	Backend           string   `toml:"backend"`
-	Service           string   `toml:"service"`
-	Path              string   `toml:"path"`
-	PassphraseEnv     string   `toml:"passphrase_env"`
-	PassphraseCommand []string `toml:"passphrase_command"`
+	Backend           string         `toml:"backend"`
+	Service           string         `toml:"service"`
+	Path              string         `toml:"path"`
+	PassphraseEnv     string         `toml:"passphrase_env"`
+	PassphraseCommand []string       `toml:"passphrase_command"`
+	Command           []string       `toml:"command"`
+	Timeout           string         `toml:"timeout"`
+	Handles           []HandleConfig `toml:"handles"`
 
 	mem *memStore // lets tests keep a memory keychain between runs
+}
+
+// HandleConfig is one login of the command backend: what it is called, which
+// fields it has and where it may be used. It holds no secret.
+type HandleConfig struct {
+	Name     string   `toml:"name"`
+	Fields   []string `toml:"fields"`
+	Origins  []string `toml:"origins"`
+	Anywhere bool     `toml:"anywhere"`
+}
+
+// ConfigError is a mistake in the keychain configuration. Key says where, as a
+// path such as keychain.handles[1].origins, so whoever read the file can point
+// at the line.
+type ConfigError struct {
+	Key string
+	Msg string
+}
+
+func (e *ConfigError) Error() string { return e.Key + ": " + e.Msg }
+
+func configErr(key, format string, args ...any) error {
+	return &ConfigError{Key: key, Msg: fmt.Sprintf(format, args...)}
 }
 
 // Validate checks the Config.
 func (c Config) Validate() error {
 	switch c.Backend {
-	case "", "keyring", "memory":
-	case "file":
+	case "", "keyring", "memory", "file", "command":
 	default:
-		return fmt.Errorf("keychain.backend: %q is not keyring, file or memory", c.Backend)
+		return configErr("keychain.backend", "%q is not keyring, file, command or memory", c.Backend)
 	}
 	if c.Backend != "file" && (c.Path != "" || c.PassphraseEnv != "" || len(c.PassphraseCommand) > 0) {
 		return errors.New("keychain: path and the passphrase settings belong to the file backend")
 	}
-	return nil
+	if c.Backend != "command" {
+		switch {
+		case len(c.Command) > 0:
+			return configErr("keychain.command", "the command belongs to the command backend; set backend = \"command\" or remove it")
+		case c.Timeout != "":
+			return configErr("keychain.timeout", "the timeout belongs to the command backend; set backend = \"command\" or remove it")
+		case len(c.Handles) > 0:
+			return configErr("keychain.handles", "logins listed in the configuration belong to the command backend; set backend = \"command\" or remove them")
+		}
+		return nil
+	}
+	return c.validateCommand()
 }
 
 func (c Config) filePath() (string, error) {
@@ -147,6 +210,12 @@ var _ tools.Vault = (*Keychain)(nil)
 // Open opens the keychain the Config names. A nil Vault with a nil error means
 // no keychain is configured.
 func Open(ctx context.Context, c Config) (tools.Vault, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	if c.Backend == "command" {
+		return newCommandVault(c)
+	}
 	k, err := open(ctx, c)
 	if err != nil || k == nil {
 		return nil, err
@@ -217,8 +286,8 @@ func parseOrigin(s string) (*urlmatch.Pattern, error) {
 	return p, nil
 }
 
-func (e *entry) allows(pageURL string) bool {
-	for _, o := range e.Origins {
+func originsAllow(origins []string, pageURL string) bool {
+	for _, o := range origins {
 		if p, err := parseOrigin(o); err == nil && p.Match(pageURL) {
 			return true
 		}
@@ -291,18 +360,26 @@ func (k *Keychain) Secret(_ context.Context, handle, field, pageURL string) (str
 
 // check says whether a field of an entry may be used on a page.
 func (k *Keychain) check(e *entry, field, pageURL string) error {
-	if !e.Anywhere {
-		if len(e.Origins) == 0 {
-			return fmt.Errorf("the login %q has no origins and is not marked as usable anywhere, so it cannot be used", e.Name)
+	return checkUse(e.Name, e.Origins, e.Anywhere, e.fieldNames(), field, pageURL)
+}
+
+// checkUse says whether a field of a login may be used on a page. Every
+// backend asks it before anything is read, so the rule is the same for all.
+func checkUse(name string, origins []string, anywhere bool, fields []string, field, pageURL string) error {
+	if !anywhere {
+		if len(origins) == 0 {
+			return fmt.Errorf("the login %q has no origins and is not marked as usable anywhere, so it cannot be used", name)
 		}
-		if !e.allows(pageURL) {
-			return fmt.Errorf("the login %q may not be used on %s: it is for %s", e.Name, shownOrigin(pageURL), strings.Join(e.Origins, ", "))
+		if !originsAllow(origins, pageURL) {
+			return fmt.Errorf("the login %q may not be used on %s: it is for %s", name, shownOrigin(pageURL), strings.Join(origins, ", "))
 		}
 	}
-	if _, ok := e.Fields[field]; !ok {
-		return fmt.Errorf("the login %q has no field %q: it has %s", e.Name, field, strings.Join(e.fieldNames(), ", "))
+	for _, f := range fields {
+		if f == field {
+			return nil
+		}
 	}
-	return nil
+	return fmt.Errorf("the login %q has no field %q: it has %s", name, field, strings.Join(fields, ", "))
 }
 
 // Test says which fields of a login can be used on a page, without computing

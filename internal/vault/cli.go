@@ -12,6 +12,8 @@ import (
 	"text/tabwriter"
 
 	"golang.org/x/term"
+
+	"github.com/fclaude/rauli/internal/tools"
 )
 
 const usage = `Usage: rauli keychain COMMAND
@@ -32,6 +34,11 @@ Commands:
                        one-time code seed works.
 
 Put options before the name.
+
+With the command backend the logins are the [[keychain.handles]] tables of the
+configuration and their values stay in your password manager, so only list, show
+and test work. Test runs your program for each field, shows none of the values,
+and lets its standard error through so you can see why it failed.
 `
 
 type repeated []string
@@ -54,6 +61,11 @@ func Run(ctx context.Context, cfg Config, args []string, in io.Reader, out, errO
 	case "add", "list", "show", "remove", "test":
 	default:
 		return fmt.Errorf("%q is not a keychain command: use add, list, show, remove or test", cmd)
+	}
+
+	// Nothing is read from standard input for a keychain that cannot take it.
+	if cfg.Backend == "command" && (cmd == "add" || cmd == "remove") {
+		return errNotHere
 	}
 
 	// The flags of add are read before the keychain is opened, so a mistake in
@@ -89,12 +101,12 @@ func Run(ctx context.Context, cfg Config, args []string, in io.Reader, out, errO
 		}
 	}
 
-	k, err := open(ctx, cfg)
+	k, err := openManager(ctx, cfg, errOut)
 	if err != nil {
 		return err
 	}
 	if k == nil {
-		return errors.New("no keychain is set up: add a [keychain] section to the configuration, with a backend of keyring or file")
+		return errors.New("no keychain is set up: add a [keychain] section to the configuration, with a backend of keyring, file or command")
 	}
 	defer k.Close()
 
@@ -164,6 +176,40 @@ func Run(ctx context.Context, cfg Config, args []string, in io.Reader, out, errO
 		fmt.Fprintf(out, "ok: %s can fill %s on %s\n", rest[0], strings.Join(fs, ", "), shownOrigin(rest[1]))
 	}
 	return nil
+}
+
+// manager is what the command line needs of a keychain, whichever backend
+// holds the logins.
+type manager interface {
+	tools.Vault
+	Show(ctx context.Context, name string) (tools.Handle, error)
+	Test(ctx context.Context, name, pageURL string) ([]string, error)
+	Add(ctx context.Context, o AddOptions) error
+	Remove(ctx context.Context, name string) error
+	Close() error
+}
+
+// openManager opens the keychain for the command line. A nil manager with a
+// nil error means no keychain is configured.
+func openManager(ctx context.Context, cfg Config, errOut io.Writer) (manager, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if cfg.Backend == "command" {
+		v, err := newCommandVault(cfg)
+		if err != nil {
+			return nil, err
+		}
+		// Only here does the program's standard error reach anyone: this is a
+		// person at a terminal finding out why a login does not work.
+		v.stderr = errOut
+		return v, nil
+	}
+	k, err := open(ctx, cfg)
+	if err != nil || k == nil {
+		return nil, err
+	}
+	return k, nil
 }
 
 func originsText(o []string) string {
