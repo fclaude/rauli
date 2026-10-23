@@ -167,6 +167,10 @@ func New(ctx context.Context, opts Options) (*Session, error) {
 // Close ends the browser.
 func (s *Session) Close() error { return s.b.Close() }
 
+// Guard is the Guard the session was built with. An audit log uses it to read
+// the decisions a rules engine made.
+func (s *Session) Guard() Guard { return s.guard }
+
 // Browser gives access to the browser, for interfaces that need more than tools.
 func (s *Session) Browser() *chrome.Browser { return s.b }
 

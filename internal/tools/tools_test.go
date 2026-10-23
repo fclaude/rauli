@@ -238,8 +238,12 @@ func TestAGuardFiltersRequestsToo(t *testing.T) {
 	if strings.Contains(r.Text, "Page: Two") {
 		t.Fatalf("the forbidden page loaded:\n%s", r.Text)
 	}
-	if _, err := call(t, s, "navigate", map[string]any{"url": srv.URL + "/two"}); err == nil {
+	_, err := call(t, s, "navigate", map[string]any{"url": srv.URL + "/two"})
+	if err == nil {
 		t.Fatal("navigating to a forbidden page should fail")
+	}
+	if !strings.Contains(err.Error(), "that page is off limits") {
+		t.Fatalf("the agent should be told the rule's reason, got %v", err)
 	}
 }
 

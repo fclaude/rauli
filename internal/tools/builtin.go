@@ -125,7 +125,7 @@ func builtin() []Tool {
 					return Result{}, err
 				}
 				if err := p.Navigate(ctx, target); err != nil {
-					return Result{}, err
+					return Result{}, withBlocked(p, err)
 				}
 				return s.report(ctx, p, wantSnapshot(a.Snapshot), "")
 			},
@@ -642,6 +642,16 @@ func builtin() []Tool {
 			},
 		},
 	}
+}
+
+// withBlocked adds to a failed navigation the reasons the rules gave for
+// blocking requests, so the agent learns why the page would not load and not
+// only that the browser refused it.
+func withBlocked(p *chrome.Page, err error) error {
+	if bl := p.Blocked(); len(bl) > 0 {
+		return fmt.Errorf("%w (blocked by the rules: %s)", err, strings.Join(bl, "; "))
+	}
+	return err
 }
 
 func history(delta int) func(context.Context, *Session, json.RawMessage) (Result, error) {
