@@ -6,6 +6,7 @@ import (
 
 	"github.com/fclaude/rauli/internal/config"
 	"github.com/fclaude/rauli/internal/mcp"
+	"github.com/fclaude/rauli/internal/rules"
 )
 
 // instructions are shown to the model that uses the tools. They say how the
@@ -26,6 +27,10 @@ Raulí has to say goes to standard error.
 
 The browser closes when the program closes standard input.`, s)
 	lf.add(fs)
+	var watchView bool
+	var listen string
+	fs.BoolVar(&watchView, "watch", false, "also serve a live view of the browser, and print its address on standard error")
+	fs.StringVar(&listen, "listen", "", "with --watch, listen on this `address` (default: a free port on this machine)")
 	if err := parse(fs, args); err != nil {
 		return err
 	}
@@ -36,7 +41,11 @@ The browser closes when the program closes standard input.`, s)
 	if err != nil {
 		return err
 	}
-	session, err := config.BuildSession(ctx, cfg, nil)
+	var queue *rules.Queue
+	if watchView {
+		queue = rules.NewQueue(0)
+	}
+	session, err := config.BuildSession(ctx, cfg, approverFor(cfg, queue))
 	if err != nil {
 		return err
 	}
@@ -46,6 +55,15 @@ The browser closes when the program closes standard input.`, s)
 		return err
 	}
 	defer stopAudit()
+
+	if watchView {
+		url, err := startView(ctx, cfg, session, queue, listen)
+		if err != nil {
+			return err
+		}
+		// Standard output belongs to the protocol, so the address goes to standard error.
+		fmt.Fprintf(s.err, "Live view: %s\n", url)
+	}
 
 	srv := &mcp.Server{Backend: session, Name: "rauli", Version: versionString(), Instructions: instructions, Log: s.err}
 	if err := srv.Serve(ctx, s.in, s.out); err != nil && ctx.Err() == nil {

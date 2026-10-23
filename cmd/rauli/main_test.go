@@ -209,15 +209,6 @@ func TestAMissingNamedConfigFileIsAnError(t *testing.T) {
 	}
 }
 
-func TestPlaceholdersSayTheyAreNotWiredYet(t *testing.T) {
-	for _, name := range []string{"watch"} {
-		code, _, errs := do(t, "", name)
-		if code != 1 || !strings.Contains(errs, "not wired up yet") {
-			t.Errorf("%s: code %d, stderr %q", name, code, errs)
-		}
-	}
-}
-
 func TestUsageErrorsExitWithTwo(t *testing.T) {
 	for _, args := range [][]string{
 		{"snapshot"}, {"snapshot", "a", "b"}, {"shot", "onlyone"}, {"serve", "extra"}, {"doctor", "extra"}, {"tools", "extra"}, {"snapshot", "--no-such-flag", "x"},
