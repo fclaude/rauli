@@ -1,0 +1,8 @@
+# Go
+*.test
+*.out
+/bin/
+
+# Editors and OS files
+.DS_Store
+*.swp
