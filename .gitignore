@@ -6,3 +6,11 @@
 # Editors and OS files
 .DS_Store
 *.swp
+
+# The documentation site: content is assembled from docs/ at build time.
+/site/content/
+/site/public/
+/site/audit/node_modules/
+
+# Python bytecode from the site scripts.
+__pycache__/
