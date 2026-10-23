@@ -21,8 +21,9 @@ type Page struct {
 	session  string
 
 	mu      sync.Mutex
-	refs    map[string]int64 // element reference from the last snapshot to its DOM node
+	refs    map[string]refInfo // element references from the last snapshot
 	console []string
+	blocked []string
 	dialogs []Dialog
 	closed  bool
 }
@@ -55,7 +56,7 @@ func (b *Browser) attach(ctx context.Context, targetID string) (*Page, error) {
 	if err := b.conn.Call(ctx, "", "Target.attachToTarget", map[string]any{"targetId": targetID, "flatten": true}, &res); err != nil {
 		return nil, err
 	}
-	p := &Page{b: b, conn: b.conn, targetID: targetID, session: res.SessionID, refs: map[string]int64{}}
+	p := &Page{b: b, conn: b.conn, targetID: targetID, session: res.SessionID, refs: map[string]refInfo{}}
 	if err := p.init(ctx); err != nil {
 		return nil, err
 	}
@@ -169,6 +170,16 @@ func (p *Page) Dialogs() []Dialog {
 	d := p.dialogs
 	p.dialogs = nil
 	return d
+}
+
+// Blocked returns the requests the browser's filter refused since the last
+// call, each with the reason, so an action's result can say why a page did not load.
+func (p *Page) Blocked() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	b := p.blocked
+	p.blocked = nil
+	return b
 }
 
 // Console returns what the page wrote to its console since the last call.
@@ -525,7 +536,7 @@ func (p *Page) filter(paused <-chan json.RawMessage) {
 			if err != nil {
 				_ = p.call(ctx, "Fetch.failRequest", map[string]any{"requestId": e.RequestID, "errorReason": "BlockedByClient"}, nil)
 				p.mu.Lock()
-				p.console = append(p.console, "blocked: "+e.Request.URL+": "+err.Error())
+				p.blocked = append(p.blocked, e.Request.URL+": "+err.Error())
 				p.mu.Unlock()
 			} else {
 				_ = p.call(ctx, "Fetch.continueRequest", map[string]any{"requestId": e.RequestID}, nil)

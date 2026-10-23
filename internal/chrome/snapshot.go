@@ -109,7 +109,7 @@ func (p *Page) Snapshot(ctx context.Context, o SnapshotOptions) (string, error) 
 		byID[res.Nodes[i].NodeID] = &res.Nodes[i]
 	}
 
-	r := &renderer{byID: byID, refs: map[string]int64{}}
+	r := &renderer{byID: byID, refs: map[string]refInfo{}}
 	if len(res.Nodes) > 0 {
 		r.walk(&res.Nodes[0], 0, false)
 	}
@@ -137,9 +137,16 @@ func (p *Page) Snapshot(ctx context.Context, o SnapshotOptions) (string, error) 
 	return text, nil
 }
 
+// refInfo is what a reference stands for: the DOM node, and a short
+// description such as `button "Pay now"` for rules and logs to read.
+type refInfo struct {
+	backend int64
+	desc    string
+}
+
 type renderer struct {
 	byID map[string]*axNode
-	refs map[string]int64
+	refs map[string]refInfo
 	out  strings.Builder
 	next int
 }
@@ -200,7 +207,11 @@ func (r *renderer) walk(n *axNode, depth int, quiet bool) {
 	if interactive[role] && n.BackendID != 0 {
 		r.next++
 		ref := fmt.Sprintf("e%d", r.next)
-		r.refs[ref] = n.BackendID
+		desc := role
+		if name := n.name(); name != "" {
+			desc += fmt.Sprintf(" %q", name)
+		}
+		r.refs[ref] = refInfo{backend: n.BackendID, desc: desc}
 		attrs = append(attrs, "ref="+ref)
 	}
 	if v, ok := n.prop("level"); ok {
@@ -245,15 +256,23 @@ func (r *renderer) walk(n *axNode, depth int, quiet bool) {
 func (p *Page) node(ref string) (int64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	id, ok := p.refs[ref]
+	info, ok := p.refs[ref]
 	if !ok {
 		return 0, fmt.Errorf("there is no element %q on this page: take a new snapshot, because references end when the page changes", ref)
 	}
-	return id, nil
+	return info.backend, nil
+}
+
+// Describe says what a reference from the last snapshot stands for, such as
+// `button "Pay now"`. It is empty for a reference that is no longer valid.
+func (p *Page) Describe(ref string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.refs[ref].desc
 }
 
 func (p *Page) forgetRefs() {
 	p.mu.Lock()
-	p.refs = map[string]int64{}
+	p.refs = map[string]refInfo{}
 	p.mu.Unlock()
 }

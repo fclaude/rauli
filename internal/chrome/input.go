@@ -336,3 +336,22 @@ func (p *Page) Select(ctx context.Context, ref, option string) error {
 	}
 	return nil
 }
+
+// SetFiles puts files into a file input, as choosing them in the file dialog would.
+func (p *Page) SetFiles(ctx context.Context, ref string, paths []string) error {
+	id, err := p.node(ref)
+	if err != nil {
+		return err
+	}
+	return p.call(ctx, "DOM.setFileInputFiles", map[string]any{"backendNodeId": id, "files": paths}, nil)
+}
+
+// Resize changes the size of the page's viewport.
+func (p *Page) Resize(ctx context.Context, width, height int) error {
+	if width < 200 || height < 200 || width > 8000 || height > 8000 {
+		return fmt.Errorf("a viewport of %dx%d is outside the supported 200 to 8000 pixels", width, height)
+	}
+	return p.call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{
+		"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false,
+	}, nil)
+}
