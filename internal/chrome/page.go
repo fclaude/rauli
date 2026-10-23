@@ -296,12 +296,22 @@ func waitLoaded(ctx context.Context, events <-chan json.RawMessage, loader strin
 }
 
 // settle waits out whatever an action started. Most clicks load nothing, so it
-// first waits briefly to see whether a navigation begins; if one does, it waits
-// for that page to finish loading.
+// first finds out whether a navigation begins; if one does, it waits for that
+// page to finish loading.
 //
-// How long to wait for a navigation to begin depends on how quickly this
-// browser is answering right now. A form submitted on a slow or busy machine
-// starts its navigation late, and a fixed wait would end before it did.
+// A navigation the action itself asks for, such as a link followed or a form
+// submitted with Enter, is announced by the page while it handles the input
+// (Page.frameRequestedNavigation), but it may begin much later. Chromium runs a
+// form submission in a task of its own, holds such tasks back after input until
+// the next frame is drawn, and a busy page or machine delays them further, by
+// more than any fixed wait. So once the action is done, one more command to the
+// page makes sure an announcement has arrived, since the page sends its events
+// before the answer to a later command, and an announced navigation is waited
+// for until it begins.
+//
+// A navigation a page starts later on its own, from a timer or after a fetch, is
+// not announced in time. For those settle waits a while, longer the more slowly
+// this browser is answering right now.
 //
 // A navigation is over when a new document has committed and then signalled the
 // end of loading: the load event, the frame reporting that it stopped loading,
@@ -311,6 +321,8 @@ func waitLoaded(ctx context.Context, events <-chan json.RawMessage, loader strin
 // stops loading. A page restored from the back/forward cache fires no load event
 // at all, which is why the other signs are there.
 func (p *Page) settle(ctx context.Context, act func() error) error {
+	requested, cancelRequested := p.conn.Subscribe(p.session, "Page.frameRequestedNavigation")
+	defer cancelRequested()
 	started, cancelStarted := p.conn.Subscribe(p.session, "Page.frameStartedLoading")
 	defer cancelStarted()
 	navigated, cancelNavigated := p.conn.Subscribe(p.session, "Page.frameNavigated")
@@ -337,23 +349,53 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 		return err
 	}
 	note("act done")
+	// The answer only matters for the events that precede it; a page in the
+	// middle of a navigation may fail to evaluate anything.
+	_, _ = p.Eval(ctx, "0")
+	begin := time.NewTimer(window)
+	defer begin.Stop()
+	announced := false
+	announce := func() {
+		if !announced {
+			announced = true
+			note("navigation requested")
+			begin.Reset(requestedStart)
+		}
+	}
+	if requestedHere(requested) {
+		announce()
+	}
 	committed := false
-	select {
-	case <-started:
-		note("started")
-	case <-navigated:
-		committed = true
-		note("navigated first")
-	case <-within:
-		// A change of fragment or a pushState has nothing to load.
-		note("within document: return")
-		p.forgetRefs()
-		return nil
-	case <-time.After(window):
-		note("window expired: return")
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+waiting:
+	for {
+		select {
+		case raw := <-requested:
+			if navigatesHere(raw) {
+				announce()
+			}
+		case <-started:
+			note("started")
+			break waiting
+		case <-navigated:
+			committed = true
+			note("navigated first")
+			break waiting
+		case <-within:
+			// A change of fragment or a pushState has nothing to load.
+			note("within document: return")
+			p.forgetRefs()
+			return nil
+		case <-begin.C:
+			// A request that arrived as the window closed still counts.
+			if !announced && requestedHere(requested) {
+				announce()
+				continue
+			}
+			note("no navigation began (announced=%v): return", announced)
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	p.forgetRefs()
 
@@ -432,12 +474,43 @@ func (p *Page) responseTime(ctx context.Context) time.Duration {
 	return took[1]
 }
 
-// startWindow is how long to wait for a navigation to begin: 400 ms on a
-// browser that answers at once, longer in proportion to how slowly this one
-// answers, and never more than five seconds.
+// startWindow is how long to wait for a navigation nobody announced to begin:
+// 400 ms on a browser that answers at once, longer in proportion to how slowly
+// this one answers, and never more than five seconds.
 func startWindow(response time.Duration) time.Duration {
 	w := 400*time.Millisecond + 30*response
 	return min(w, 5*time.Second)
+}
+
+// requestedStart bounds the wait for a navigation the page has announced to
+// begin. It is not a guess at how long that takes, since the wait ends as soon
+// as it begins; it is there for an announced navigation the page then drops,
+// such as one a navigate handler cancels, which nothing reports. A test
+// shortens it.
+var requestedStart = 10 * time.Second
+
+// requestedHere reads the navigation requests that have arrived and reports
+// whether any of them is for this tab.
+func requestedHere(requested <-chan json.RawMessage) bool {
+	here := false
+	for {
+		select {
+		case raw := <-requested:
+			here = navigatesHere(raw) || here
+		default:
+			return here
+		}
+	}
+}
+
+// navigatesHere reports whether a navigation request replaces what this tab
+// shows. A link that opens another tab or window, or saves a download, leaves
+// the page where it is, so there is nothing here to wait for.
+func navigatesHere(raw json.RawMessage) bool {
+	var e struct {
+		Disposition string `json:"disposition"`
+	}
+	return json.Unmarshal(raw, &e) == nil && e.Disposition == "currentTab"
 }
 
 // History moves through the tab's session history: -1 is back, 1 is forward.

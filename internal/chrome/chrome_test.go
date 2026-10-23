@@ -76,6 +76,27 @@ func fixture(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, `<!doctype html><title>Slow</title><h1>Slow answer to %s</h1>`, r.URL.Query().Get("q"))
 	})
+	mux.HandleFunc("/busyform", func(w http.ResponseWriter, r *http.Request) {
+		// On Enter the page queues a second and a half of its own work, which runs
+		// before the form's submission task and so holds the navigation back.
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><title>Busy form</title><h1>Busy form</h1>
+<form action="/search" method="get"><label for="q">Search words</label><input id="q" name="q"><button>Go</button></form>
+<script>
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  setTimeout(() => { const end = performance.now() + 1500; while (performance.now() < end) {} }, 0);
+});
+</script>`)
+	})
+	mux.HandleFunc("/cancelform", func(w http.ResponseWriter, r *http.Request) {
+		// The form's navigation is announced when it is submitted, and then the
+		// page's navigate handler cancels it, so it never begins.
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><title>Cancel form</title><h1>Cancel form</h1>
+<form action="/search" method="get"><label for="q">Search words</label><input id="q" name="q"><button>Go</button></form>
+<script>navigation.addEventListener('navigate', e => e.preventDefault());</script>`)
+	})
 	mux.HandleFunc("/file", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", `attachment; filename="report.txt"`)
@@ -547,6 +568,61 @@ func TestSubmittingToASlowPageWaitsForItToReplaceTheOldOne(t *testing.T) {
 	text, _ := p.Text(ctx)
 	if !strings.Contains(text, "Slow answer to anyone there") {
 		t.Fatalf("the call returned before the slow page arrived: %q", text)
+	}
+}
+
+// A form submitted with Enter announces its navigation at once, but the
+// navigation runs in a task the browser holds back after input, behind whatever
+// the page queued first. This page queues a second and a half of work on Enter,
+// as a page busy after a key press or a page on a loaded machine does, so the new
+// page begins loading long after a wait for it to begin would have ended. The
+// call must still wait for it rather than report the old page.
+func TestASubmissionThePageHoldsUpIsStillWaitedFor(t *testing.T) {
+	p, base, ctx := page(t)
+	if err := p.Navigate(ctx, base+"/busyform"); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := p.Snapshot(ctx, SnapshotOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Type(ctx, refOf(t, snap, `textbox "Search words"`), "patience", TypeOptions{Submit: true}); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := p.Text(ctx)
+	if !strings.Contains(text, "Results for patience") {
+		info, _ := p.Info(ctx)
+		t.Fatalf("Type returned before the held-up submission arrived.\ntab: %+v\npage text: %q\nsettle: %s", info, text, strings.Join(p.settleLog, "\n  "))
+	}
+}
+
+// A navigation the page announces and then cancels never begins, and nothing
+// says so. The call must come back once the wait for it is over, with the page
+// left as it was, rather than wait for as long as the caller allows.
+func TestASubmissionThePageCancelsDoesNotHoldTheCall(t *testing.T) {
+	limit := requestedStart
+	requestedStart = time.Second
+	t.Cleanup(func() { requestedStart = limit })
+	p, base, ctx := page(t)
+	if err := p.Navigate(ctx, base+"/cancelform"); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := p.Snapshot(ctx, SnapshotOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	began := time.Now()
+	if err := p.Type(ctx, refOf(t, snap, `textbox "Search words"`), "never mind", TypeOptions{Submit: true}); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(began); took > 5*time.Second {
+		t.Fatalf("the call took %v to come back", took)
+	}
+	if info, _ := p.Info(ctx); info.Title != "Cancel form" {
+		t.Fatalf("the cancelled submission left the page: %+v", info)
+	}
+	if log := strings.Join(p.settleLog, "\n  "); !strings.Contains(log, "navigation requested") {
+		t.Fatalf("the cancelled submission was never announced, so this test does not reach the bound:\n  %s", log)
 	}
 }
 
