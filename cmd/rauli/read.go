@@ -36,6 +36,11 @@ you can act on has a reference such as e12.`, s)
 		return err
 	}
 	defer session.Close()
+	stopAudit, err := startAudit(ctx, cfg, session)
+	if err != nil {
+		return err
+	}
+	defer stopAudit()
 
 	res, err := session.Call(ctx, "navigate", mustJSON(map[string]any{"url": fs.Arg(0)}))
 	if err != nil {
@@ -69,6 +74,11 @@ window opens. The picture is a PNG unless you ask for a JPEG, which is smaller.`
 		return err
 	}
 	defer session.Close()
+	stopAudit, err := startAudit(ctx, cfg, session)
+	if err != nil {
+		return err
+	}
+	defer stopAudit()
 
 	if _, err := session.Call(ctx, "navigate", mustJSON(map[string]any{"url": fs.Arg(0), "snapshot": false})); err != nil {
 		return err

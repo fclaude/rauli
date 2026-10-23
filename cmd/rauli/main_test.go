@@ -210,7 +210,7 @@ func TestAMissingNamedConfigFileIsAnError(t *testing.T) {
 }
 
 func TestPlaceholdersSayTheyAreNotWiredYet(t *testing.T) {
-	for _, name := range []string{"keychain", "watch"} {
+	for _, name := range []string{"watch"} {
 		code, _, errs := do(t, "", name)
 		if code != 1 || !strings.Contains(errs, "not wired up yet") {
 			t.Errorf("%s: code %d, stderr %q", name, code, errs)
@@ -348,5 +348,57 @@ func TestFlagsMayFollowThePositionalArguments(t *testing.T) {
 		if !reflect.DeepEqual(fs.Args(), c.pos) || *full != c.full || *name != c.name {
 			t.Errorf("%v: positionals %v, full %v, profile %q", c.args, fs.Args(), *full, *name)
 		}
+	}
+}
+
+func TestTakeConfigFindsTheFileWhereverItIsNamed(t *testing.T) {
+	for _, c := range []struct {
+		in   []string
+		path string
+		rest []string
+	}{
+		{[]string{"list"}, "", []string{"list"}},
+		{[]string{"--config", "a.toml", "list"}, "a.toml", []string{"list"}},
+		{[]string{"add", "--anywhere", "--config=b.toml", "shop"}, "b.toml", []string{"add", "--anywhere", "shop"}},
+		{[]string{"-config", "c.toml", "show", "x"}, "c.toml", []string{"show", "x"}},
+		{[]string{"add", "--", "--config"}, "", []string{"add", "--", "--config"}},
+	} {
+		path, rest := takeConfig(c.in)
+		if path != c.path || !reflect.DeepEqual(rest, c.rest) {
+			t.Errorf("%v: got %q %v, want %q %v", c.in, path, rest, c.path, c.rest)
+		}
+	}
+}
+
+// The keychain command runs against the keychain the file names, keeps what it
+// stores between runs, and prints no value on any stream.
+func TestKeychainStoresAndListsLoginsWithoutPrintingThem(t *testing.T) {
+	dir := t.TempDir()
+	conf := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(conf, []byte("[keychain]\nbackend = \"file\"\npath = \"keys\"\npassphrase_env = \"RAULI_TEST_PASSPHRASE\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RAULI_TEST_PASSPHRASE", "a passphrase for the test")
+	const value = "s3cret-value-for-the-test"
+
+	code, out, errs := do(t, value+"\n", "keychain", "--config", conf, "add", "--origin", "https://shop.example", "shop", "password")
+	if code != 0 {
+		t.Fatalf("add: code %d, stdout %q, stderr %q", code, out, errs)
+	}
+	code, out2, errs2 := do(t, "", "keychain", "--config", conf, "list")
+	if code != 0 || !strings.Contains(out2, "shop") {
+		t.Fatalf("list: code %d, stdout %q, stderr %q", code, out2, errs2)
+	}
+	code, out3, errs3 := do(t, "", "keychain", "--config", conf, "show", "shop")
+	if code != 0 || !strings.Contains(out3, "https://shop.example") {
+		t.Fatalf("show: code %d, stdout %q, stderr %q", code, out3, errs3)
+	}
+	for _, stream := range []string{out, errs, out2, errs2, out3, errs3} {
+		if strings.Contains(stream, value) {
+			t.Fatalf("a stream holds the secret: %q", stream)
+		}
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, "keys")); err != nil || strings.Contains(string(raw), value) {
+		t.Fatalf("the keychain file is missing or holds the value in the clear: %v", err)
 	}
 }

@@ -152,12 +152,19 @@ func Parse(data []byte, name string) (Config, error) {
 	}
 	c.Browser.Profile = c.resolve(c.Browser.Profile)
 	c.Browser.DownloadDir = c.resolve(c.Browser.DownloadDir)
+	c.Keychain.Path = c.resolve(c.Keychain.Path)
+	c.Rules.Audit.File = c.resolve(c.Rules.Audit.File)
 	return c, nil
 }
 
 // resolve makes a path from the file absolute, taking relative ones from the
 // file's own directory so the result does not depend on where rauli is run.
 func (c Config) resolve(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
 	if p == "" || filepath.IsAbs(p) || c.Dir == "" {
 		return p
 	}

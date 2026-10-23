@@ -41,6 +41,11 @@ The browser closes when the program closes standard input.`, s)
 		return err
 	}
 	defer session.Close()
+	stopAudit, err := startAudit(ctx, cfg, session)
+	if err != nil {
+		return err
+	}
+	defer stopAudit()
 
 	srv := &mcp.Server{Backend: session, Name: "rauli", Version: versionString(), Instructions: instructions, Log: s.err}
 	if err := srv.Serve(ctx, s.in, s.out); err != nil && ctx.Err() == nil {

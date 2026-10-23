@@ -85,6 +85,9 @@ type ApprovalConfig struct {
 
 // AuditConfig tunes what the audit log records.
 type AuditConfig struct {
+	// File is where the log is written, one JSON object per line. Empty means
+	// there is no log. A relative path is taken from the configuration file's directory.
+	File string `toml:"file"`
 	// Requests is "denied" (the default) to log only the requests the rules
 	// refused, or "all" to log every request a page makes.
 	Requests string `toml:"requests"`
