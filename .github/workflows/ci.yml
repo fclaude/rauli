@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The tests drive a real headless browser against pages they serve themselves.
+  # Both kinds of runner have Google Chrome installed; the step that prints its
+  # version is there so a run shows which browser the tests used.
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            runner: ubuntu-24.04
+          - name: macOS Intel
+            runner: macos-15-intel
+          - name: macOS Apple Silicon
+            runner: macos-15
+    env:
+      # Use the Go that setup-go installs; never fetch another toolchain when
+      # go.mod asks for a newer release. Raise go.mod's go line deliberately.
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Show toolchain and browser
+        run: |
+          go version
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+          else
+            google-chrome --version
+          fi
+
+      # Ubuntu 24.04 stops unprivileged processes from creating the user
+      # namespaces Chromium's sandbox needs. Lifting that for the test run keeps
+      # the sandbox on, which is how the tests should run, instead of turning it off.
+      - name: Let Chromium use its sandbox
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          "$(go env GOPATH)/bin/staticcheck" ./...
+
+      - name: Run the tests
+        run: go test -race ./...
+
+  # The documentation is built from the repository's own files, and the Tools
+  # page from the tools' schemas. This job keeps both honest on every push, so a
+  # tool added without a description, or a broken link, fails here and not on
+  # the first publish.
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Test the page assembly
+        run: python3 -m unittest discover -s site
+
+      - name: Check that every page assembles and every tool is documented
+        run: python3 site/build.py --check
