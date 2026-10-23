@@ -39,8 +39,9 @@ PAGES = [
     ("docs/rules.md", "rules.md", "Rules", 4),
     ("docs/keychain.md", "keychain.md", "Keychain", 5),
     ("docs/watching.md", "watching.md", "Watching", 6),
-    ("docs/security.md", "security.md", "Security model", 7),
-    ("docs/architecture.md", "architecture.md", "Architecture", 8),
+    ("docs/recipes.md", "recipes.md", "Recipes", 7),
+    ("docs/security.md", "security.md", "Security model", 8),
+    ("docs/architecture.md", "architecture.md", "Architecture", 9),
 ]
 TARGETS = {pathlib.PurePosixPath(src).name: dst for src, dst, _, _ in PAGES}
 TARGETS["README.md"] = "_index.md"
