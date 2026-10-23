@@ -1,0 +1,26 @@
+base_url = "https://fclaude.github.io/rauli"
+title = "Raulí"
+description = "A browser that people and coding agents can both use, built on Chromium."
+default_language = "en"
+
+compile_sass = false
+build_search_index = false
+generate_feeds = false
+
+# The pages are the repository's own markdown, code samples included, and some
+# of them contain {{ }}; nothing here is a template.
+skip_content_templating = ["*", "**"]
+
+[markdown]
+smart_punctuation = false
+insert_anchor_links = "none"
+
+# The pair with the best contrast: every token is at least 4.5:1 against its
+# background in both themes (site/audit/contrast.py measures it).
+[markdown.highlighting]
+error_on_missing_language = true
+light_theme = "github-light-high-contrast"
+dark_theme = "github-dark-high-contrast"
+
+[extra]
+repo = "https://github.com/fclaude/rauli"

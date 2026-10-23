@@ -1,0 +1,9 @@
+{
+  "name": "rauli-site-audit",
+  "private": true,
+  "description": "Accessibility checks for the Raulí site: axe-core in light and dark at two widths, and keyboard and reflow checks.",
+  "dependencies": {
+    "axe-core": "4.10.2",
+    "playwright": "^1.56.0"
+  }
+}

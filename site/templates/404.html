@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Page not found · {{ config.title }}{% endblock title %}
+
+{% block content %}
+<article>
+  <h1>Page not found</h1>
+  <p>There's no page at this address. The <a href="{{ get_url(path='@/_index.md') }}">start of the Raulí guide</a> links to all of them.</p>
+</article>
+{% endblock content %}
