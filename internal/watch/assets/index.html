@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Raulí live view</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#view">Skip to the browser view</a>
+  <header>
+    <h1>Raulí live view</h1>
+    <p>This is the browser the agent is using. You can watch it, and you can take it over when a page needs a person.</p>
+  </header>
+  <main>
+    <noscript><p>The live view needs JavaScript.</p></noscript>
+    <section aria-labelledby="control-h">
+      <h2 id="control-h">Control</h2>
+      <p id="banner" role="status">Connecting.</p>
+      <div class="row">
+        <button type="button" id="take" disabled>Take control</button>
+        <button type="button" id="give" disabled>Give back</button>
+      </div>
+      <form id="say" class="row" autocomplete="off">
+        <label for="say-text">Send text to the page</label>
+        <input id="say-text" type="text" disabled>
+        <button type="submit" id="say-send" disabled>Send</button>
+      </form>
+    </section>
+
+    <section aria-labelledby="view-h">
+      <h2 id="view-h">Browser</h2>
+      <p class="page-info"><span id="title" class="title">No tab is open yet</span><br><code id="url"></code></p>
+      <div class="stage">
+        <canvas id="view" width="1280" height="800" tabindex="0" role="application"
+          aria-label="Live picture of the browser tab" aria-describedby="view-help"></canvas>
+      </div>
+      <p id="view-help" class="help">While you have control, clicks, scrolling and keys on the picture go to the page. Press Shift+Escape to move focus out of the picture.</p>
+    </section>
+
+    <section aria-labelledby="approvals-h">
+      <h2 id="approvals-h">Waiting for approval</h2>
+      <p id="approvals-empty">Nothing is waiting for approval.</p>
+      <ul id="approvals" class="plain"></ul>
+    </section>
+
+    <section aria-labelledby="log-h">
+      <h2 id="log-h">What the agent did</h2>
+      <p id="log-empty">The agent has not done anything yet.</p>
+      <div id="logbox" class="log" role="log" aria-label="Agent actions" aria-live="polite" tabindex="0">
+        <ol id="log"></ol>
+      </div>
+    </section>
+
+    <section aria-labelledby="devtools-h">
+      <h2 id="devtools-h">Developer tools</h2>
+      <p>The browser's own developer tools can attach to this address, to inspect the page or follow its requests.</p>
+      <p><code id="devtools">Not known yet.</code></p>
+    </section>
+  </main>
+  <footer><p>Everything on this page comes from your own machine.</p></footer>
+</body>
+</html>
