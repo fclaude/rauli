@@ -498,3 +498,23 @@ func TestDownloadsLandOnlyWhereTheyAreAllowed(t *testing.T) {
 	}
 	t.Fatal("the download never reached the allowed directory")
 }
+
+// Right after Close the browser still lists the tab. Callers must not be handed
+// it, because acting on it fails with a session that no longer exists.
+func TestAClosedTabIsNotListed(t *testing.T) {
+	p, _, ctx := page(t)
+	if err := p.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		pages, err := p.b.Pages(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, q := range pages {
+			if q == p {
+				t.Fatalf("the closed tab was listed on call %d", i)
+			}
+		}
+	}
+}

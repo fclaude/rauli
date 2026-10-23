@@ -208,6 +208,12 @@ func (p *Page) Info(ctx context.Context) (Info, error) {
 	return res.TargetInfo, nil
 }
 
+func (p *Page) isClosed() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.closed
+}
+
 // Close closes the tab.
 func (p *Page) Close(ctx context.Context) error {
 	p.mu.Lock()

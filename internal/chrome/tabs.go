@@ -31,6 +31,11 @@ func (b *Browser) Pages(ctx context.Context) ([]*Page, error) {
 				return nil, err
 			}
 		}
+		// The browser lists a tab for a moment after it was asked to close it.
+		// A tab closed through Close is gone as far as callers are concerned.
+		if p.isClosed() {
+			continue
+		}
 		out = append(out, p)
 	}
 	// Forget tabs that have closed.
