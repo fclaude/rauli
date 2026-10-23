@@ -16,7 +16,7 @@ cdp.Conn               JSON messages over one WebSocket         (exists)
 Chromium
 ```
 
-Four more pieces sit beside the stack. A rules engine implements the Guard, and it exists. The `rauli` command builds a session and serves the tools to an agent, and that exists too. A keychain will implement the Vault, and a live view will read a session's events and show its tab. Neither of those is built. We'll go through the layers from the bottom.
+Five more pieces sit beside the stack, and all of them exist. A rules engine implements the Guard. A keychain implements the Vault. The `rauli` command builds a session from a configuration file and serves the tools to an agent. A live view reads a session's events and shows its tab. Recipes, small Scheme programs, become tools of their own. I'll go through the layers from the bottom.
 
 ## The DevTools client
 
@@ -58,6 +58,8 @@ Every call also produces an `Event`, with the tool, its arguments, the page it e
 
 A person can take the browser with `Hold`, and give it back with `Release`. Calls made while it's held wait, and give up with a clear error if it isn't returned within their time limit.
 
-## What comes next
+## What sits beside it
 
-The rules engine lives in `internal/rules` and implements the Guard. The command, in `cmd/rauli`, builds a session from a configuration file and serves its tools over standard input and output, so an agent can use it without linking any Go. The keychain belongs in `internal/vault`, which holds the interface it has to satisfy and nothing else yet. The live view will be an HTTP handler that reads a session's events and shows its tab, using `Hold` and `Release` for the moments when a person takes over. The [Rules](rules.md), [Keychain](keychain.md) and [Watching](watching.md) pages stay short until they're written.
+The rules engine lives in `internal/rules` and implements the Guard; the [Rules](rules.md) page covers it. The keychain is `internal/vault` and implements the Vault, and the [Keychain](keychain.md) page covers that. The command in `cmd/rauli` builds a session from a configuration file, using `internal/config`, and serves its tools over standard input and output, so an agent can use it without linking any Go. The live view in `internal/watch` is an HTTP handler that reads a session's events and shows its tab, and it uses `Hold` and `Release` for the moments when a person takes over. [Watching](watching.md) covers it.
+
+Recipes are Scheme files that Raulí runs with [Brote](https://fclaude.github.io/brote/). Every step a recipe takes is a call to one of the tools, so the rules and the keychain apply to it as they do to an agent. [Recipes](recipes.md) covers them.

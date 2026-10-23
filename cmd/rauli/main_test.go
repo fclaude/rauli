@@ -80,6 +80,9 @@ func TestVersion(t *testing.T) {
 	if code != 0 || !strings.HasPrefix(out, "rauli ") {
 		t.Fatalf("version: %d %q", code, out)
 	}
+	if code, out, _ := do(t, "", "version", "-h"); code != 0 || !strings.Contains(out, "Usage: rauli version") {
+		t.Errorf("version -h should show its usage and succeed, got %d %q", code, out)
+	}
 	if code, _, _ := do(t, "", "version", "extra"); code != 2 {
 		t.Errorf("version with an argument should be a usage error, got %d", code)
 	}

@@ -35,13 +35,15 @@ REPO = "https://github.com/fclaude/rauli/blob/main/"
 PAGES = [
     ("docs/home.md", "_index.md", "Home", 1),
     ("docs/getting-started.md", "getting-started.md", "Getting started", 2),
-    ("docs/tools.md", "tools.md", "Tools", 3),
-    ("docs/rules.md", "rules.md", "Rules", 4),
-    ("docs/keychain.md", "keychain.md", "Keychain", 5),
-    ("docs/watching.md", "watching.md", "Watching", 6),
-    ("docs/recipes.md", "recipes.md", "Recipes", 7),
-    ("docs/security.md", "security.md", "Security model", 8),
-    ("docs/architecture.md", "architecture.md", "Architecture", 9),
+    ("docs/command.md", "command.md", "The command", 3),
+    ("docs/configuration.md", "configuration.md", "Configuration", 4),
+    ("docs/tools.md", "tools.md", "Tools", 5),
+    ("docs/rules.md", "rules.md", "Rules", 6),
+    ("docs/keychain.md", "keychain.md", "Keychain", 7),
+    ("docs/watching.md", "watching.md", "Watching", 8),
+    ("docs/recipes.md", "recipes.md", "Recipes", 9),
+    ("docs/security.md", "security.md", "Security model", 10),
+    ("docs/architecture.md", "architecture.md", "Architecture", 11),
 ]
 TARGETS = {pathlib.PurePosixPath(src).name: dst for src, dst, _, _ in PAGES}
 TARGETS["README.md"] = "_index.md"

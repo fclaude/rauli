@@ -9,6 +9,10 @@ import (
 
 func init() {
 	register("version", "print the version", func(ctx context.Context, args []string, s streams) error {
+		if len(args) == 1 && (args[0] == "-h" || args[0] == "-help" || args[0] == "--help") {
+			fmt.Fprint(s.out, "Usage: rauli version\n\nPrints the version of the program and the Go it was built with.\n")
+			return nil
+		}
 		if len(args) > 0 {
 			return usagef("version takes no arguments, but got %q", args[0])
 		}

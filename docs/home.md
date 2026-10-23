@@ -4,12 +4,12 @@ Raulí lets a program use a web browser the way a person does. It starts a Chrom
 
 It's named after the raulí, a Chilean beech and a close relative of the coigüe. [Coigüe](https://github.com/fclaude/coigue) is a small terminal editor and [Brote](https://github.com/fclaude/brote) is a small Scheme interpreter, and the three live next to each other on GitHub.
 
-## Where it stands
+## What it does
 
-Two layers exist, and both are tested against a real browser. The first starts the browser and drives its tabs. The second turns that into the tools on the [Tools](tools.md) page, which is what an agent calls: `navigate`, `snapshot`, `click`, `type`, `screenshot` and the rest.
+A program asks for a page and gets it back as text, with a reference on each element it can act on. It then clicks, types, scrolls and takes screenshots through the [tools](tools.md). The `rauli` command serves them to any program that speaks the Model Context Protocol, and from a shell it can print a page or save a screenshot.
 
-That second layer puts two interfaces in the way of everything that matters. A Guard is asked before the browser makes a request and before an action runs, and a Vault hands a credential to the page without the agent ever seeing it. A rules engine now implements the Guard. The `rauli` command wraps the tools: it serves them to a program over standard input and output using the Model Context Protocol, and from a shell it can print a page as text or save a screenshot. The keychain that will implement the Vault isn't built, and neither is the live view for watching the browser. The pages for the rules, the command, the keychain and the live view are still to be written, and until they are this site says only what we've checked.
+A rules engine decides which addresses the browser may reach and which actions need a person's approval. A keychain hands a login to the page without the program ever seeing it. A live view shows the browser while it works, and lets you take the tab over. Small Scheme programs called [recipes](recipes.md) can be offered to an agent as tools of their own. Raulí runs on Linux and macOS.
 
 ## Where to go next
 
-[Getting started](getting-started.md) runs a short Go program against a real page and shows what comes back. The [security model](security.md) is worth reading before you point Raulí at anything with a login, because it lists exactly what the Guard and the Vault do and don't protect against. The [architecture](architecture.md) page shows how the layers fit, and where the missing pieces will go.
+[Getting started](getting-started.md) installs it and reads a page. The [command](command.md) and [configuration](configuration.md) pages say what it takes. A fresh install allows any website, so read [Rules](rules.md) before you point an agent at anything that matters, and the [security model](security.md) for exactly what the guards do and don't protect against. The [architecture](architecture.md) page shows how the layers fit.
