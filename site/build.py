@@ -12,14 +12,15 @@ Two markers in a page are filled in here:
     <!-- include: docs/examples/readpage/main.go go -->   a file from the repository, as a code block
     <!-- tools-reference -->                              the reference for every tool
 
-The tool reference is not written by hand. It comes from the program that knows
-the tools (`go run ./cmd/rauli tools --markdown` once the command exists, and
-`go run ./internal/tools/docgen` until then), and the build stops if a tool in
-the code has no entry in it, or an entry names a tool that is gone.
+The tool reference is not written by hand. It comes from the command that knows
+the tools (`go run ./cmd/rauli tools --markdown`), reshaped here for the site,
+and the build stops if a tool the command lists (`tools --json`) has no entry in
+it, or an entry names a tool that is gone.
 
 The script is deterministic: the same inputs give the same files, and it stops
 with a message if a marker names something that isn't there.
 """
+import json
 import pathlib
 import re
 import shutil
@@ -71,18 +72,53 @@ def go(*args):
 
 
 def tools_reference():
-    """The reference Markdown, checked against the tools the code has."""
-    names = [n for n in go("./internal/tools/docgen", "-names").split() if n]
+    """The reference Markdown for the site, checked against the tools the code has."""
+    names = sorted(tool["name"] for tool in json.loads(go("./cmd/rauli", "tools", "--json")))
     if not names:
-        raise BuildError("the code reports no tools")
-    # When the command exists it is the source of record; until then the
-    # generator in internal/tools is.
-    if (ROOT / "cmd" / "rauli").is_dir():
-        text = go("./cmd/rauli", "tools", "--markdown")
-    else:
-        text = go("./internal/tools/docgen")
+        raise BuildError("the command reports no tools")
+    text = reshape_reference(go("./cmd/rauli", "tools", "--markdown"))
     check_reference(names, text)
     return text.rstrip("\n"), names
+
+
+def split_row(line):
+    """The cells of a Markdown table row, honouring \\| inside a cell."""
+    cells = re.split(r"(?<!\\)\|", line.strip())
+    return [c.strip() for c in cells[1:-1]]
+
+
+def reshape_reference(text):
+    """Fit the command's reference into the Tools page.
+
+    The command prints a title, an introduction, a `## name` heading for each tool and
+    a four-column table. The page has its own title and introduction, puts the tools
+    one level lower, and folds "required" into the type column, which leaves three
+    columns that fit a phone without sideways scrolling.
+    """
+    first = text.find("\n## ")
+    if first < 0:
+        raise BuildError("the command's reference has no tool headings")
+    out = []
+    for line in text[first + 1 :].split("\n"):
+        m = re.match(r"^## (\S+)$", line)
+        if m:
+            out.append("### `%s`" % m.group(1))
+            continue
+        if line.startswith("|"):
+            cells = split_row(line)
+            if cells[:4] == ["Argument", "Type", "Required", "What it does"]:
+                out.append("| Argument | Type | What it does |")
+                continue
+            if len(cells) == 4 and re.fullmatch(r"-+", cells[0]):
+                out.append("| --- | --- | --- |")
+                continue
+            if len(cells) == 4 and cells[2] in ("yes", "no"):
+                typ = cells[1] + (", required" if cells[2] == "yes" else "")
+                out.append("| %s | %s | %s |" % (cells[0], typ, cells[3]))
+                continue
+            raise BuildError("a row of the command's reference has a shape this script does not know: " + line)
+        out.append(line)
+    return "\n".join(out)
 
 
 def check_reference(names, text):

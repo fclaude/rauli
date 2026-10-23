@@ -22,6 +22,51 @@ class ReferenceCheck(unittest.TestCase):
             build.check_reference(["navigate"], REFERENCE)
 
 
+COMMAND_OUTPUT = """# Tool reference
+
+An introduction the page does not need.
+
+## click
+
+Click an element.
+
+| Argument | Type | Required | What it does |
+| --- | --- | --- | --- |
+| `ref` | string | yes | The element, such as e12. |
+| `double` | boolean | no | Double-click, or `a\\|b`. |
+
+## back
+
+Go back.
+
+It takes no arguments.
+"""
+
+
+class Reshape(unittest.TestCase):
+    def test_tools_move_down_a_level_and_the_preface_goes(self):
+        out = build.reshape_reference(COMMAND_OUTPUT)
+        self.assertNotIn("# Tool reference", out)
+        self.assertNotIn("An introduction", out)
+        self.assertIn("### `click`", out)
+        self.assertIn("### `back`", out)
+        self.assertEqual(build.TOOL_HEADING.findall(out), ["click", "back"])
+
+    def test_required_folds_into_the_type_column(self):
+        out = build.reshape_reference(COMMAND_OUTPUT)
+        self.assertIn("| Argument | Type | What it does |", out)
+        self.assertIn("| `ref` | string, required | The element, such as e12. |", out)
+        self.assertIn("| `double` | boolean | Double-click, or `a\\|b`. |", out)
+
+    def test_a_table_shape_it_does_not_know_stops_the_build(self):
+        with self.assertRaisesRegex(build.BuildError, "shape this script does not know"):
+            build.reshape_reference("\n## x\n\n| Argument | Type |\n| --- | --- |\n| `a` | string |\n")
+
+    def test_output_without_tool_headings_stops_the_build(self):
+        with self.assertRaisesRegex(build.BuildError, "no tool headings"):
+            build.reshape_reference("# Tool reference\n\nNothing here.\n")
+
+
 class Links(unittest.TestCase):
     def test_a_link_to_another_page_becomes_a_site_link(self):
         self.assertEqual(build.rewrite("tools.md", "docs/home.md"), "@/tools.md")
