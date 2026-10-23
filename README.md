@@ -23,7 +23,7 @@ go test -race ./...
 
 ## Documentation
 
-The pages in `docs/` are the documentation, and a Zola site in `site/` is built from them. The Tools page is generated from the tools' own schemas. `site/README.md` says how to build the site and how its accessibility is checked. The [security model](docs/security.md) lists exactly what the Guard and the Vault do and don't protect against, and it's worth reading before pointing Raulí at anything with a login.
+The pages in `docs/` are the documentation, and a Zola site in `site/` is built from them and published at <https://fclaude.github.io/rauli/>. The Tools page is generated from the tools' own schemas. `site/README.md` says how to build the site and how its accessibility is checked. The [security model](docs/security.md) lists exactly what the Guard and the Vault do and don't protect against, and it's worth reading before pointing Raulí at anything with a login.
 
 ## Licence
 
