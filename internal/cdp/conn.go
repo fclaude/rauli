@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -21,6 +22,10 @@ import (
 // maxMessage bounds one protocol message. A full-page screenshot arrives as a
 // single base64 string, so the library's default of 32 KiB is far too small.
 const maxMessage = 128 << 20
+
+// writeTimeout bounds sending one command. It is generous because a command is
+// small; it only has to end a write to a browser that has stopped reading.
+const writeTimeout = 30 * time.Second
 
 // Error is the error object a command returns.
 type Error struct {
@@ -142,7 +147,20 @@ func (c *Conn) Call(ctx context.Context, session, method string, params, out any
 		c.forget(id)
 		return err
 	}
-	if err := c.ws.Write(ctx, websocket.MessageText, data); err != nil {
+	// A command nobody is waiting for any more is not worth sending.
+	if err := ctx.Err(); err != nil {
+		c.forget(id)
+		return fmt.Errorf("%s: %w", method, err)
+	}
+	// The write has a limit of its own. The WebSocket library closes the whole
+	// connection when the context of a write ends while the frame is being
+	// sent, so a caller that gives up at the wrong moment would take every
+	// other caller's connection down with it. The caller still stops waiting
+	// at once, in the select below.
+	wctx, wcancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+	err = c.ws.Write(wctx, websocket.MessageText, data)
+	wcancel()
+	if err != nil {
 		c.forget(id)
 		return fmt.Errorf("%s: %w", method, err)
 	}
