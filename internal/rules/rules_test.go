@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"github.com/fclaude/rauli/internal/chrome"
 	"github.com/fclaude/rauli/internal/tools"
 )
@@ -357,5 +359,34 @@ func TestDecisionsRecordRequestsOnlyWhenAsked(t *testing.T) {
 			}
 		}
 		cancel()
+	}
+}
+
+// The configuration file holds more than rules. Config must read from its own
+// table, and an unknown key inside it must still be an error when the whole
+// file is read strictly, which is how the program reads it.
+func TestConfigReadsFromTheRulesTableOfALargerFile(t *testing.T) {
+	type file struct {
+		Browser map[string]any `toml:"browser"`
+		Rules   Config         `toml:"rules"`
+	}
+	read := func(doc string) (file, error) {
+		var f file
+		dec := toml.NewDecoder(strings.NewReader(doc))
+		dec.DisallowUnknownFields()
+		return f, dec.Decode(&f)
+	}
+	f, err := read("[browser]\nheaded = true\n\n[rules.network]\nallow = [\"https://a.example\"]\n\n[[rules.actions.rule]]\nkind = \"eval\"\ndecision = \"deny\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Rules.Network.Allow) != 1 || len(f.Rules.Actions.Rule) != 1 || f.Rules.Validate() != nil {
+		t.Fatalf("read wrongly: %+v", f.Rules)
+	}
+	// The error's own text is generic; String() on the strict-mode error names the key.
+	_, err = read("[rules.network]\nalow = []\n")
+	var strict *toml.StrictMissingError
+	if !errors.As(err, &strict) || !strings.Contains(strict.String(), "alow") {
+		t.Fatalf("a misspelt key in the rules table should be an error naming it, got %v", err)
 	}
 }
