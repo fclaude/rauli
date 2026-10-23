@@ -89,7 +89,9 @@ type session struct {
 }
 
 // Serve reads requests from in until it ends or ctx is cancelled, and writes
-// the replies to out. It returns once every call in flight has finished.
+// the replies to out. When the input ends, calls already running finish and
+// reply first. When ctx is cancelled they are cancelled. Serve returns once
+// every call in flight is over.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -132,8 +134,15 @@ loop:
 			break loop
 		}
 	}
-	// The client has gone or the server is stopping: calls in flight have no
-	// one to answer, so they are cancelled and waited for.
+	if result == nil && ctx.Err() == nil {
+		// The input ended. That is how a client says it has nothing more to ask,
+		// and it may still be reading: a script pipes its requests in and waits
+		// for the answers. So the calls in flight are allowed to finish and
+		// reply, each within its own time limit.
+		ss.wg.Wait()
+	}
+	// A shutdown, or a failed stream, leaves no one to answer: cancel what is
+	// left and wait for it.
 	cancel()
 	ss.wg.Wait()
 	return result

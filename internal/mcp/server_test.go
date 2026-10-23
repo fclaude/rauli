@@ -303,20 +303,56 @@ func TestCancellingEndsTheCallAndSilencesItsReply(t *testing.T) {
 	}
 }
 
-func TestClosingInputCancelsWhatIsRunningAndServeReturns(t *testing.T) {
+func TestClosingInputLetsACallFinishAndAnswer(t *testing.T) {
 	f := newFake()
 	c := start(t, f)
 	initialize(c, "2025-06-18")
 	c.send(map[string]any{"jsonrpc": "2.0", "id": 30, "method": "tools/call", "params": map[string]any{"name": "slow"}})
 	<-f.started
 	c.in.Close()
+
+	select {
+	case err := <-c.done:
+		t.Fatalf("Serve returned (%v) while a call was still running", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(f.release)
+	r := c.read()
+	if r["id"] != float64(30) || r["result"].(map[string]any)["isError"] != false {
+		t.Fatalf("the call did not answer after the input closed: %v", r)
+	}
 	select {
 	case err := <-c.done:
 		if err != nil {
 			t.Fatalf("Serve returned %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Serve did not return after its input closed")
+		t.Fatal("Serve did not return once the last call had answered")
+	}
+}
+
+func TestShuttingDownCancelsWhatIsRunning(t *testing.T) {
+	f := newFake()
+	inR, inW := io.Pipe()
+	defer inW.Close()
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	var out bytes.Buffer
+	go func() { done <- (&Server{Backend: f, Name: "t", Version: "1"}).Serve(ctx, inR, &out) }()
+
+	fmt.Fprintln(inW, `{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"slow"}}`)
+	<-f.started
+	stop()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled Serve should say why it stopped")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return after its context was cancelled")
+	}
+	if out.Len() != 0 {
+		t.Fatalf("a call cancelled by shutdown wrote %q", out.String())
 	}
 }
 
