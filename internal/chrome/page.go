@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -296,9 +297,17 @@ func waitLoaded(ctx context.Context, events <-chan json.RawMessage, loader strin
 // first waits briefly to see whether a navigation begins; if one does, it waits
 // for that page to finish loading.
 //
-// A page restored from the browser's back/forward cache fires no load event at
-// all, so the end of loading is taken from three signs: the load event, the
-// frame reporting that it stopped loading, and the document's own readyState.
+// How long to wait for a navigation to begin depends on how quickly this
+// browser is answering right now. A form submitted on a slow or busy machine
+// starts its navigation late, and a fixed wait would end before it did.
+//
+// A navigation is over when a new document has committed and then signalled the
+// end of loading: the load event, the frame reporting that it stopped loading,
+// or the document's own readyState. Until a document commits, the old one is
+// still "complete" and must not be taken for the end. A navigation that never
+// commits, such as a download or an aborted load, ends shortly after the frame
+// stops loading. A page restored from the back/forward cache fires no load event
+// at all, which is why the other signs are there.
 func (p *Page) settle(ctx context.Context, act func() error) error {
 	started, cancelStarted := p.conn.Subscribe(p.session, "Page.frameStartedLoading")
 	defer cancelStarted()
@@ -311,17 +320,20 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 	stopped, cancelStopped := p.conn.Subscribe(p.session, "Page.frameStoppedLoading")
 	defer cancelStopped()
 
+	window := startWindow(p.responseTime(ctx))
 	if err := act(); err != nil {
 		return err
 	}
+	committed := false
 	select {
 	case <-started:
 	case <-navigated:
+		committed = true
 	case <-within:
 		// A change of fragment or a pushState has nothing to load.
 		p.forgetRefs()
 		return nil
-	case <-time.After(400 * time.Millisecond):
+	case <-time.After(window):
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -329,7 +341,7 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 	p.forgetRefs()
 
 	loaded := false
-	var idle <-chan time.Time
+	var idle, grace <-chan time.Time
 	finish := func() {
 		if !loaded {
 			loaded = true
@@ -344,10 +356,22 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 			return fmt.Errorf("waiting for the page to load: %w", ctx.Err())
 		case <-idle:
 			return nil
+		case <-navigated:
+			committed = true
 		case <-stopped:
-			finish()
+			if committed {
+				finish()
+			} else if grace == nil {
+				// Loading stopped and nothing has replaced the page. Give a document a
+				// moment to commit; if none does, this was a download or an aborted load.
+				grace = time.After(1500 * time.Millisecond)
+			}
+		case <-grace:
+			if !committed {
+				finish()
+			}
 		case <-poll.C:
-			if !loaded {
+			if committed && !loaded {
 				if raw, err := p.Eval(ctx, "document.readyState"); err == nil && string(raw) == `"complete"` {
 					finish()
 				}
@@ -367,6 +391,30 @@ func (p *Page) settle(ctx context.Context, act func() error) error {
 			}
 		}
 	}
+}
+
+// responseTime is how long the browser takes to answer a trivial command now,
+// the middle of three tries. It is zero when the page cannot answer, such as in
+// the middle of a navigation, and the caller then uses the shortest wait.
+func (p *Page) responseTime(ctx context.Context) time.Duration {
+	var took [3]time.Duration
+	for i := range took {
+		began := time.Now()
+		if _, err := p.Eval(ctx, "0"); err != nil {
+			return 0
+		}
+		took[i] = time.Since(began)
+	}
+	sort.Slice(took[:], func(i, j int) bool { return took[i] < took[j] })
+	return took[1]
+}
+
+// startWindow is how long to wait for a navigation to begin: 400 ms on a
+// browser that answers at once, longer in proportion to how slowly this one
+// answers, and never more than five seconds.
+func startWindow(response time.Duration) time.Duration {
+	w := 400*time.Millisecond + 30*response
+	return min(w, 5*time.Second)
 }
 
 // History moves through the tab's session history: -1 is back, 1 is forward.

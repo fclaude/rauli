@@ -31,6 +31,7 @@ var pages = map[string]string{
 <label for="colour">Colour</label>
 <select id="colour"><option value="r">Red</option><option value="g">Green</option></select>
 <a href="/popup" target="_blank">open in a new tab</a>
+<a href="/file">download the report</a>
 <button id="alert" onclick="alert('careful'); document.title='alerted'">Alert me</button>
 <button id="log" onclick="console.log('clicked', 42)">Log it</button>
 <div style="height:3000px">tall</div>
@@ -546,5 +547,58 @@ func TestSubmittingToASlowPageWaitsForItToReplaceTheOldOne(t *testing.T) {
 	text, _ := p.Text(ctx)
 	if !strings.Contains(text, "Slow answer to anyone there") {
 		t.Fatalf("the call returned before the slow page arrived: %q", text)
+	}
+}
+
+// The wait for a navigation to begin grows with how slowly the browser answers,
+// so a busy machine is given the time it needs and a fast one is not slowed.
+func TestTheWaitForANavigationToBeginScalesWithTheBrowsersSpeed(t *testing.T) {
+	for _, c := range []struct {
+		response time.Duration
+		want     time.Duration
+	}{
+		{0, 400 * time.Millisecond},
+		{time.Millisecond, 430 * time.Millisecond},
+		{20 * time.Millisecond, time.Second},
+		{100 * time.Millisecond, 3400 * time.Millisecond},
+		{time.Second, 5 * time.Second},
+	} {
+		if got := startWindow(c.response); got != c.want {
+			t.Errorf("startWindow(%v) = %v, want %v", c.response, got, c.want)
+		}
+	}
+}
+
+// An action that loads nothing must come back quickly on a machine that is not
+// slow: the wait is only as long as it needs to be.
+func TestAClickThatLoadsNothingDoesNotWaitLong(t *testing.T) {
+	p, base, ctx := page(t)
+	p.Navigate(ctx, base+"/")
+	snap, _ := p.Snapshot(ctx, SnapshotOptions{})
+	ref := refOf(t, snap, `button "Log it"`)
+	began := time.Now()
+	if err := p.Click(ctx, ref, ClickOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(began); took > 2*time.Second {
+		t.Fatalf("a click that loads nothing took %v", took)
+	}
+}
+
+// A link that turns out to be a download starts a navigation that never
+// commits a page. The click must come back, and the tab must stay where it was.
+func TestClickingADownloadLinkReturnsAndLeavesTheTabAlone(t *testing.T) {
+	p, base, ctx := page(t)
+	p.Navigate(ctx, base+"/")
+	snap, _ := p.Snapshot(ctx, SnapshotOptions{})
+	began := time.Now()
+	if err := p.Click(ctx, refOf(t, snap, `link "download the report"`), ClickOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(began); took > 6*time.Second {
+		t.Fatalf("the click took %v to come back", took)
+	}
+	if info, _ := p.Info(ctx); info.Title != "Fixture home" {
+		t.Fatalf("a download replaced the page: %+v", info)
 	}
 }
