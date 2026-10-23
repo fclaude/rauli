@@ -7,7 +7,7 @@ permissions:
 jobs:
   trace:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       GOTOOLCHAIN: local
     steps:
@@ -17,5 +17,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Run the flaky test many times
-        run: go test ./internal/chrome/ -run 'TestTypeAndSubmitAForm' -count=60 -v 2>&1 | grep -v '^=== ' | tail -80
+      - name: Run the whole suite several times
+        run: |
+          for i in 1 2 3 4 5 6; do
+            echo "=== round $i"
+            go test ./... -count=1 2>&1 | grep -E -A14 -- '--- FAIL|^FAIL' | head -60 || true
+          done
