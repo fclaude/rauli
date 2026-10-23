@@ -542,7 +542,13 @@ func (p *Page) filter(paused <-chan json.RawMessage) {
 			if err != nil {
 				_ = p.call(ctx, "Fetch.failRequest", map[string]any{"requestId": e.RequestID, "errorReason": "BlockedByClient"}, nil)
 				p.mu.Lock()
-				p.blocked = append(p.blocked, e.Request.URL+": "+err.Error())
+				if e.ResourceType == "Document" {
+					p.blocked = append(p.blocked, e.Request.URL+": "+err.Error())
+				} else {
+					// A blocked image or script is routine; it is kept where a person
+					// looking for it would, and the audit log has it too.
+					p.console = append(p.console, "blocked: "+e.Request.URL+": "+err.Error())
+				}
 				p.mu.Unlock()
 			} else {
 				_ = p.call(ctx, "Fetch.continueRequest", map[string]any{"requestId": e.RequestID}, nil)

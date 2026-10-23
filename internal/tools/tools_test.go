@@ -238,12 +238,24 @@ func TestAGuardFiltersRequestsToo(t *testing.T) {
 	if strings.Contains(r.Text, "Page: Two") {
 		t.Fatalf("the forbidden page loaded:\n%s", r.Text)
 	}
-	_, err := call(t, s, "navigate", map[string]any{"url": srv.URL + "/two"})
-	if err == nil {
-		t.Fatal("navigating to a forbidden page should fail")
+	if !strings.Contains(r.Text, "error page") || !strings.Contains(r.Text, "back") {
+		t.Fatalf("the agent should be told the tab shows an error page and how to leave it:\n%s", r.Text)
 	}
-	if !strings.Contains(err.Error(), "that page is off limits") {
-		t.Fatalf("the agent should be told the rule's reason, got %v", err)
+	if back := must(t, s, "back", nil); !strings.Contains(back.Text, "Page: Shop") {
+		t.Fatalf("back should return to the page the click started on:\n%s", back.Text)
+	}
+
+	// Asking for a forbidden address outright is refused before the tab moves,
+	// so the agent keeps the page it was on and its references.
+	snap = must(t, s, "snapshot", nil).Text
+	_, err := call(t, s, "navigate", map[string]any{"url": srv.URL + "/two"})
+	if err == nil || !strings.Contains(err.Error(), "that page is off limits") {
+		t.Fatalf("navigating to a forbidden page should fail with the rule's reason, got %v", err)
+	}
+	time.Sleep(600 * time.Millisecond) // long enough for an error page to commit, had one been started
+	after := must(t, s, "snapshot", nil).Text
+	if !strings.Contains(after, "Page: Shop") || refOf(t, after, "second page") != refOf(t, snap, "second page") {
+		t.Fatalf("a refused navigation must leave the tab and its references alone:\n%s", after)
 	}
 }
 

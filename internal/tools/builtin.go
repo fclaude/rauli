@@ -53,6 +53,21 @@ func (s *Session) guarded(ctx context.Context, p *chrome.Page, tool, kind, eleme
 	return nil
 }
 
+// allowedAddress asks the Guard about an address before the tab goes there.
+// The browser's own filter would also stop the request, but only after it
+// has begun to load, and a stopped page load leaves the tab on the browser's
+// error page. Asking first leaves the tab on the page it was on.
+func (s *Session) allowedAddress(ctx context.Context, target string) error {
+	if target == "about:blank" {
+		return nil
+	}
+	err := s.guard.CheckURL(ctx, chrome.Request{URL: target, Method: "GET", Type: "Document", Navigation: true})
+	if err != nil {
+		return fmt.Errorf("not allowed: %w", err)
+	}
+	return nil
+}
+
 // report is what an action returns: where the tab is now, anything notable
 // that happened (a dialog, a new tab), and optionally the page itself.
 func (s *Session) report(ctx context.Context, p *chrome.Page, snapshot bool, lead string) (Result, error) {
@@ -61,8 +76,13 @@ func (s *Session) report(ctx context.Context, p *chrome.Page, snapshot bool, lea
 		b.WriteString(lead + "\n")
 	}
 	// Only requests for a page are worth saying; a blocked image or tracker is routine.
-	for _, bl := range p.Blocked() {
+	blocked := p.Blocked()
+	for _, bl := range blocked {
 		fmt.Fprintf(&b, "Blocked by the rules: %s\n", bl)
+	}
+	if len(blocked) > 0 {
+		// The browser puts its own error page in the tab for a page it was stopped from loading.
+		b.WriteString("The tab is showing the browser's error page for it. Use back to return to the page it was on.\n")
 	}
 	for _, d := range p.Dialogs() {
 		verb := "dismissed"
@@ -122,6 +142,9 @@ func builtin() []Tool {
 					return Result{}, err
 				}
 				if err := s.guarded(ctx, p, "navigate", "navigate", "", target); err != nil {
+					return Result{}, err
+				}
+				if err := s.allowedAddress(ctx, target); err != nil {
 					return Result{}, err
 				}
 				if err := p.Navigate(ctx, target); err != nil {
@@ -708,6 +731,9 @@ func tabs(ctx context.Context, s *Session, args json.RawMessage) (Result, error)
 				return Result{}, err
 			}
 			if err := s.guarded(ctx, cur, "tabs", "navigate", "", target); err != nil {
+				return Result{}, err
+			}
+			if err := s.allowedAddress(ctx, target); err != nil {
 				return Result{}, err
 			}
 		}
