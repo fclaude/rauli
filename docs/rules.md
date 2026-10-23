@@ -1,3 +1,3 @@
 # Rules
 
-The rules engine isn't built yet. What exists is the Guard interface it will implement, which is asked about every request the browser makes and about every action before it runs, and which the [architecture](architecture.md) page describes. A program that embeds Raulí can supply its own Guard today.
+The rules engine exists in `internal/rules` and implements the Guard, which is asked about every request the browser makes and about every action before it runs. This page isn't written yet. The [architecture](architecture.md) page describes the Guard, and the [security model](security.md) says what it can and can't stop.

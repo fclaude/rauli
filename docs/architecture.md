@@ -5,6 +5,8 @@ Raulí is built in layers, and each layer knows only about the one below it. Her
 ```text
 agent
   |   a name and a JSON object per call
+rauli serve            the command, on standard input and output (exists)
+  |
 tools.Session          Guard and Vault plug in here             (exists)
   |
 chrome.Browser, Page   starts the browser, drives its tabs      (exists)
@@ -14,7 +16,7 @@ cdp.Conn               JSON messages over one WebSocket         (exists)
 Chromium
 ```
 
-The pieces still to come sit beside the stack. A rules engine implements the Guard, a keychain implements the Vault, a command builds a session and serves the tools to an agent, and a live view reads a session's events. We'll go through the layers from the bottom.
+Four more pieces sit beside the stack. A rules engine implements the Guard, and it exists. The `rauli` command builds a session and serves the tools to an agent, and that exists too. A keychain will implement the Vault, and a live view will read a session's events and show its tab. Neither of those is built. We'll go through the layers from the bottom.
 
 ## The DevTools client
 
@@ -58,4 +60,4 @@ A person can take the browser with `Hold`, and give it back with `Release`. Call
 
 ## What comes next
 
-The rules engine will live in `internal/rules` and the keychain in `internal/vault`, and both packages exist already with the interfaces they have to satisfy and nothing inside. The command will build a session from a configuration file and serve its tools over a standard input and output protocol, so an agent can use it without linking any Go. The live view will be an HTTP handler that reads a session's events and shows its tab, using `Hold` and `Release` for the moments when a person takes over. The [Rules](rules.md), [Keychain](keychain.md) and [Watching](watching.md) pages stay short until those exist.
+The rules engine lives in `internal/rules` and implements the Guard. The command, in `cmd/rauli`, builds a session from a configuration file and serves its tools over standard input and output, so an agent can use it without linking any Go. The keychain belongs in `internal/vault`, which holds the interface it has to satisfy and nothing else yet. The live view will be an HTTP handler that reads a session's events and shows its tab, using `Hold` and `Release` for the moments when a person takes over. The [Rules](rules.md), [Keychain](keychain.md) and [Watching](watching.md) pages stay short until they're written.

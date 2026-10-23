@@ -1,6 +1,6 @@
 # Getting started
 
-Raulí isn't a program you install yet. It's a set of Go packages, and the command that wraps them is still being written. What you can do today is run the tests and drive the tools from a short Go program, and we'll do both here.
+Raulí is a set of Go packages with a command, `rauli`, on top of them. The command is new and this page doesn't cover it yet. What we'll do here is run the tests and drive the tools from a short Go program.
 
 ## What you need
 

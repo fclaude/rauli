@@ -8,7 +8,7 @@ It's named after the raulí, a Chilean beech and a close relative of the coigüe
 
 Two layers work and are tested against a real browser. `internal/chrome` starts the browser and drives its tabs, over a small DevTools client in `internal/cdp`. `internal/tools` turns that into the tools an agent calls: `navigate`, `snapshot`, `click`, `type`, `screenshot` and the rest, listed in [docs/tools.md](docs/tools.md).
 
-The tools put two interfaces in the way of everything that matters. A Guard is asked before the browser makes a request and before an action runs, and a Vault hands a credential to the page without the agent seeing it. The interfaces are in place. A rules engine, a keychain, the command that serves the tools to an agent and a live view for watching the browser are being added, and until they land `internal/rules` and `internal/vault` are empty packages that compile.
+The tools put two interfaces in the way of everything that matters. A Guard is asked before the browser makes a request and before an action runs, and a Vault hands a credential to the page without the agent seeing it. A rules engine in `internal/rules` implements the Guard, and the `rauli` command in `cmd/rauli` serves the tools to a program over standard input and output using the Model Context Protocol. The keychain and the live view aren't built yet, and `internal/vault` is an empty package that compiles.
 
 ## Building and testing
 
