@@ -217,6 +217,14 @@ func (s *Session) Page(ctx context.Context) (*chrome.Page, error) {
 	return p, nil
 }
 
+// Current is the tab the tools act on, or nil if none has been opened yet. Unlike
+// Page it never opens one, so a live view can watch without changing anything.
+func (s *Session) Current() *chrome.Page {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cur
+}
+
 func (s *Session) setPage(p *chrome.Page) {
 	s.mu.Lock()
 	s.cur = p

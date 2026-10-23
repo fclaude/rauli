@@ -122,6 +122,8 @@ type Browser struct {
 	closed bool
 	exited chan struct{}
 	tabs   map[string]*Page // attached tabs by target id
+
+	exitErr error // how the process ended, once exited is closed
 }
 
 // Launch starts the browser and connects to it. The browser lives until Close
@@ -185,7 +187,10 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 
 	b := &Browser{cmd: cmd, profile: profile, tempProfile: temp, opts: opts, exited: make(chan struct{}), tabs: map[string]*Page{}}
 	go func() {
-		_ = cmd.Wait()
+		err := cmd.Wait()
+		b.mu.Lock()
+		b.exitErr = err
+		b.mu.Unlock()
 		close(b.exited)
 	}()
 
@@ -291,6 +296,18 @@ func (b *Browser) kill() {
 	}
 	<-b.exited
 }
+
+// ExitError says how the browser process ended: nil for a clean exit, otherwise
+// the exit status or the signal that ended it. It is only meaningful once Done
+// is closed.
+func (b *Browser) ExitError() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.exitErr
+}
+
+// Done is closed when the browser process has exited.
+func (b *Browser) Done() <-chan struct{} { return b.exited }
 
 // UserAgent is the user agent the browser's pages present.
 func (b *Browser) UserAgent() string { return b.userAgent }
