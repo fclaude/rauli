@@ -1,0 +1,9 @@
+{
+  "name": "rauli-watch-audit",
+  "private": true,
+  "description": "Accessibility checks for the live view: axe-core in light and dark at two widths and two states, and a keyboard-only walk.",
+  "dependencies": {
+    "axe-core": "4.10.2",
+    "playwright": "^1.56.0"
+  }
+}
