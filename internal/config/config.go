@@ -32,6 +32,7 @@ type Config struct {
 	Rules    rules.Config `toml:"rules"`
 	Keychain vault.Config `toml:"keychain"`
 	Watch    Watch        `toml:"watch"`
+	Recipes  Recipes      `toml:"recipes"`
 
 	// Dir is the directory the file was read from. Relative paths in the file
 	// mean paths below it. It is empty for a configuration that was not read from a file.
@@ -61,6 +62,18 @@ type Watch struct {
 	Listen string `toml:"listen"`
 	// Port is the TCP port. Zero means a free one chosen at start.
 	Port int `toml:"port"`
+}
+
+// Recipes holds the settings for scripted recipes, Scheme files that become
+// extra tools. See docs/recipes.md.
+type Recipes struct {
+	// Paths are recipe files, or directories of them. Relative ones are taken
+	// from the directory of the configuration file.
+	Paths []string `toml:"paths"`
+	// Deadline bounds one run of a recipe. Zero means two minutes.
+	Deadline Duration `toml:"deadline"`
+	// MaxOutput bounds the text a recipe returns, in characters. Zero means 100000.
+	MaxOutput int `toml:"max_output"`
 }
 
 // Duration is a time.Duration written as text, such as "45s" or "2m".
@@ -161,6 +174,12 @@ func Parse(data []byte, name string) (Config, error) {
 	}
 	if err := c.Keychain.Validate(); err != nil {
 		return Config{}, keychainError(name, data, err)
+	}
+	for i, p := range c.Recipes.Paths {
+		c.Recipes.Paths[i] = c.resolve(p)
+	}
+	if c.Recipes.MaxOutput < 0 {
+		return Config{}, fmt.Errorf("%s: [recipes] max_output cannot be negative: %d", name, c.Recipes.MaxOutput)
 	}
 	return c, nil
 }

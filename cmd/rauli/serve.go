@@ -29,6 +29,8 @@ The browser closes when the program closes standard input.`, s)
 	lf.add(fs)
 	var watchView bool
 	var listen string
+	var recipes repeatedFlag
+	fs.Var(&recipes, "recipe", "offer the recipes in this `file` or directory as tools; may be repeated")
 	fs.BoolVar(&watchView, "watch", false, "also serve a live view of the browser, and print its address on standard error")
 	fs.StringVar(&listen, "listen", "", "with --watch, listen on this `address` (default: a free port on this machine)")
 	if err := parse(fs, args); err != nil {
@@ -65,7 +67,11 @@ The browser closes when the program closes standard input.`, s)
 		fmt.Fprintf(s.err, "Live view: %s\n", url)
 	}
 
-	srv := &mcp.Server{Backend: session, Name: "rauli", Version: versionString(), Instructions: instructions, Log: s.err}
+	backend, err := withRecipes(ctx, cfg, recipes, session)
+	if err != nil {
+		return err
+	}
+	srv := &mcp.Server{Backend: backend, Name: "rauli", Version: versionString(), Instructions: instructions, Log: s.err}
 	if err := srv.Serve(ctx, s.in, s.out); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("the protocol stream failed: %w", err)
 	}

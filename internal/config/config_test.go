@@ -159,3 +159,20 @@ func TestAMistakeInTheKeychainNamesTheFileTheLineAndTheKey(t *testing.T) {
 		}
 	}
 }
+
+func TestRecipePathsFollowTheFileAndTheLimitsAreRead(t *testing.T) {
+	dir := t.TempDir()
+	c, err := Parse([]byte("[recipes]\npaths = [\"mine.scm\", \"/opt/shared\"]\ndeadline = \"90s\"\nmax_output = 500\n"), filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Recipes.Paths; len(got) != 2 || got[0] != filepath.Join(dir, "mine.scm") || got[1] != "/opt/shared" {
+		t.Fatalf("paths: %v", got)
+	}
+	if time.Duration(c.Recipes.Deadline) != 90*time.Second || c.Recipes.MaxOutput != 500 {
+		t.Fatalf("limits: %v %d", c.Recipes.Deadline, c.Recipes.MaxOutput)
+	}
+	if _, err := Parse([]byte("[recipes]\nmax_output = -1\n"), filepath.Join(dir, "config.toml")); err == nil || !strings.Contains(err.Error(), "max_output cannot be negative") {
+		t.Fatalf("got %v", err)
+	}
+}
