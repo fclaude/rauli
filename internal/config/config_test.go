@@ -139,3 +139,23 @@ func TestParseWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestAMistakeInTheKeychainNamesTheFileTheLineAndTheKey(t *testing.T) {
+	good := "[keychain]\nbackend = \"command\"\ncommand = [\"get\"]\n\n[[keychain.handles]]\nname = \"shop\"\nfields = [\"user\"]\norigins = [\"https://shop.example\"]\n"
+	if _, err := Parse([]byte(good), "config.toml"); err != nil {
+		t.Fatalf("a good keychain is refused: %v", err)
+	}
+	cases := []struct {
+		name, text, line, key string
+	}{
+		{"timeout", strings.Replace(good, "command = [\"get\"]", "command = [\"get\"]\ntimeout = \"soon\"", 1), "config.toml:4:", "keychain.timeout"},
+		{"second origin", good + "\n[[keychain.handles]]\nname = \"bank\"\nfields = [\"user\"]\norigins = [\"bank.example\"]\n", "config.toml:13:", "keychain.handles[1].origins"},
+		{"no program", strings.Replace(good, "command = [\"get\"]", "", 1), "", "keychain.command"},
+	}
+	for _, c := range cases {
+		_, err := Parse([]byte(c.text), "config.toml")
+		if err == nil || !strings.Contains(err.Error(), c.line) || !strings.Contains(err.Error(), `"`+c.key+`"`) {
+			t.Errorf("%s: got %v, want %q and %q", c.name, err, c.line, c.key)
+		}
+	}
+}

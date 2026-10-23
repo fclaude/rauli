@@ -154,6 +154,14 @@ func Parse(data []byte, name string) (Config, error) {
 	c.Browser.DownloadDir = c.resolve(c.Browser.DownloadDir)
 	c.Keychain.Path = c.resolve(c.Keychain.Path)
 	c.Rules.Audit.File = c.resolve(c.Rules.Audit.File)
+	// A program named by a path, as opposed to by a name to look up, is taken
+	// from the file's directory too.
+	if cmd := c.Keychain.Command; len(cmd) > 0 && strings.Contains(cmd[0], "/") {
+		c.Keychain.Command = append([]string{c.resolve(cmd[0])}, cmd[1:]...)
+	}
+	if err := c.Keychain.Validate(); err != nil {
+		return Config{}, keychainError(name, data, err)
+	}
 	return c, nil
 }
 
