@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // streams are the standard streams a command works with. Commands never touch
@@ -62,12 +63,49 @@ func flagSet(name, usage, description string, s streams) *flag.FlagSet {
 }
 
 // parse parses a command's arguments, turning a bad flag into a usage error.
+// Flags may come before, between or after the other arguments, because that is
+// how people type them: the standard library would stop at the first address
+// and take everything after it for a name.
 func parse(fs *flag.FlagSet, args []string) error {
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(interleave(fs, args)); err != nil {
 		if err == flag.ErrHelp {
 			return err
 		}
 		return usageError{err.Error()}
 	}
 	return nil
+}
+
+// interleave moves the flags of args in front of its positional arguments. A
+// flag that takes a value brings the next argument with it, unless the value
+// is attached with "=". Everything after a bare "--" stays positional.
+func interleave(fs *flag.FlagSet, args []string) []string {
+	boolean := map[string]bool{}
+	fs.VisitAll(func(f *flag.Flag) {
+		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {
+			boolean[f.Name] = true
+		}
+	})
+	var flags, rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			rest = append(rest, args[i:]...)
+			i = len(args)
+		case len(a) > 1 && a[0] == '-':
+			flags = append(flags, a)
+			name := strings.TrimLeft(a, "-")
+			if strings.Contains(name, "=") || boolean[name] {
+				continue
+			}
+			if i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		default:
+			rest = append(rest, a)
+		}
+	}
+	return append(flags, rest...)
 }

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -320,5 +321,32 @@ func TestServeAnswersTheProtocolAndWritesNothingElseToStandardOutput(t *testing.
 	text := replies[2]["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
 	if !strings.Contains(text, "Command fixture") {
 		t.Errorf("navigate result: %s", text)
+	}
+}
+
+func TestFlagsMayFollowThePositionalArguments(t *testing.T) {
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	full := fs.Bool("full-page", false, "")
+	name := fs.String("profile", "", "")
+	cases := []struct {
+		args []string
+		pos  []string
+		full bool
+		name string
+	}{
+		{[]string{"https://x", "out.png", "--full-page"}, []string{"https://x", "out.png"}, true, ""},
+		{[]string{"--profile", "p", "https://x", "out.png"}, []string{"https://x", "out.png"}, false, "p"},
+		{[]string{"https://x", "--profile=q", "out.png"}, []string{"https://x", "out.png"}, false, "q"},
+		{[]string{"https://x", "--profile", "r", "out.png", "-full-page"}, []string{"https://x", "out.png"}, true, "r"},
+		{[]string{"--", "-odd-name", "x"}, []string{"-odd-name", "x"}, false, ""},
+	}
+	for _, c := range cases {
+		*full, *name = false, ""
+		if err := fs.Parse(interleave(fs, c.args)); err != nil {
+			t.Fatalf("%v: %v", c.args, err)
+		}
+		if !reflect.DeepEqual(fs.Args(), c.pos) || *full != c.full || *name != c.name {
+			t.Errorf("%v: positionals %v, full %v, profile %q", c.args, fs.Args(), *full, *name)
+		}
 	}
 }
