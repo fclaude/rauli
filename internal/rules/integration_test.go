@@ -137,13 +137,19 @@ func TestAnAllowListBlocksSubresourcesAndNavigations(t *testing.T) {
 	if !strings.Contains(r.Text, "Site A") {
 		t.Fatalf("the allowed site did not load:\n%s", r.Text)
 	}
-	// The page asked for an image from the other site. The rules refused it, the
-	// agent was told why, and the request never reached that server.
-	if want := "Blocked by the rules: " + f.b.URL + "/pixel.png"; !strings.Contains(r.Text, want) {
-		t.Fatalf("the blocked subresource is not reported:\n%s", r.Text)
+	// The page asked for an image from the other site. The rules refused it and
+	// the request never reached that server. A blocked image is routine, so an
+	// action's result does not announce it; the console log keeps it, with the
+	// reason, for anyone who looks.
+	if strings.Contains(r.Text, "Blocked by the rules") {
+		t.Fatalf("a blocked image should not be announced with every action:\n%s", r.Text)
 	}
-	if !strings.Contains(r.Text, "not on the list of sites the rules allow") {
-		t.Fatalf("the reason is missing:\n%s", r.Text)
+	console := must(t, s, "console", nil).Text
+	if want := "blocked: " + f.b.URL + "/pixel.png"; !strings.Contains(console, want) {
+		t.Fatalf("the blocked subresource is not in the console log:\n%s", console)
+	}
+	if !strings.Contains(console, "not on the list of sites the rules allow") {
+		t.Fatalf("the reason is missing from the console log:\n%s", console)
 	}
 	if f.pixelsSeen.Load() != 0 {
 		t.Fatal("the blocked image was fetched anyway")
