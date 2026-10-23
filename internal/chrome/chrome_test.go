@@ -64,6 +64,17 @@ func fixture(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, `<!doctype html><title>Results</title><h1>Results for %s</h1>`, r.URL.Query().Get("q"))
 	})
+	mux.HandleFunc("/slowform", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><title>Slow form</title><h1>Slow form</h1>
+<form action="/slow" method="get"><label for="q">Question</label><input id="q" name="q"><button>Ask</button></form>`)
+	})
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		// Nothing is written until the delay is over, so the browser has no page to show until then.
+		time.Sleep(2500 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html><title>Slow</title><h1>Slow answer to %s</h1>`, r.URL.Query().Get("q"))
+	})
 	mux.HandleFunc("/file", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", `attachment; filename="report.txt"`)
@@ -194,7 +205,9 @@ func TestTypeAndSubmitAForm(t *testing.T) {
 	}
 	text, _ := p.Text(ctx)
 	if !strings.Contains(text, "Results for raulí trees") {
-		t.Fatalf("the form was not submitted with the typed text: %q", text)
+		info, _ := p.Info(ctx)
+		value, _ := p.Eval(ctx, "document.getElementById('q') ? document.getElementById('q').value : '(no field: the page changed)'")
+		t.Fatalf("the form was not submitted with the typed text.\ntab: %+v\nfield holds: %s\nconsole: %q\npage text: %q", info, value, p.Console(), text)
 	}
 }
 
@@ -516,5 +529,22 @@ func TestAClosedTabIsNotListed(t *testing.T) {
 				t.Fatalf("the closed tab was listed on call %d", i)
 			}
 		}
+	}
+}
+
+// A page that is slow to begin answering has not replaced the old one yet, and
+// until it does the old document still reports itself loaded. The call that
+// submitted the form must wait for the new page, not take the old page's
+// finished state for the end of the navigation.
+func TestSubmittingToASlowPageWaitsForItToReplaceTheOldOne(t *testing.T) {
+	p, base, ctx := page(t)
+	p.Navigate(ctx, base+"/slowform")
+	snap, _ := p.Snapshot(ctx, SnapshotOptions{})
+	if err := p.Type(ctx, refOf(t, snap, `textbox "Question"`), "anyone there", TypeOptions{Submit: true}); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := p.Text(ctx)
+	if !strings.Contains(text, "Slow answer to anyone there") {
+		t.Fatalf("the call returned before the slow page arrived: %q", text)
 	}
 }

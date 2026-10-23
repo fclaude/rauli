@@ -85,6 +85,11 @@ func (p *Page) init(ctx context.Context) error {
 	}, nil); err != nil {
 		return err
 	}
+	// A tab in a window nobody has focused ignores key presses on some systems.
+	// Pretending the page has focus is what makes input reliable there.
+	if err := p.call(ctx, "Emulation.setFocusEmulationEnabled", map[string]any{"enabled": true}, nil); err != nil {
+		return err
+	}
 	if ua := p.b.userAgent; ua != "" {
 		if err := p.call(ctx, "Network.setUserAgentOverride", map[string]any{"userAgent": ua}, nil); err != nil {
 			return err
