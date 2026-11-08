@@ -94,11 +94,11 @@ The program then sees the [tools](tools.md): `navigate`, `snapshot`, `click`, `t
 
 ## From Go
 
-The same tools are a Go package, `internal/tools`. Because it's under `internal`, a program that uses it has to live inside the repository, and Raulí isn't a library you can import yet. The example below opens an address, prints the page as text, follows the first link and takes a screenshot. It lives in the repository as `docs/examples/readpage`, and CI builds it, so it can't fall out of step with the code.
+The same tools are a Go package, `github.com/fclaude/rauli/browser`, which a program imports like any other. A program that links it supplies its own Guard and Vault in `browser.Options`, so its own rules and its own keychain decide what the browser may do; with neither, everything is allowed and no credential is offered. The example below opens an address, prints the page as text, follows the first link and takes a screenshot. It lives in the repository as `docs/examples/readpage`, and CI builds it, so it can't fall out of step with the code.
 
 <!-- include: docs/examples/readpage/main.go go -->
 
-Run it from a clone of the repository, against the pages served above:
+It runs from a clone of the repository too, against the pages served above:
 
 ```bash
 git clone https://github.com/fclaude/rauli

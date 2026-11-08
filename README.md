@@ -6,7 +6,7 @@ It's named after the raulí, a Chilean beech and a close relative of the coigüe
 
 ## What it does
 
-A program asks for a page and gets it back as text, with a reference on each element it can act on. It then clicks, types, scrolls, takes screenshots and so on, through [22 tools](docs/tools.md). The `rauli` command serves them to any program that speaks the Model Context Protocol, over standard input and output, and from a shell it can print a page or save a screenshot.
+A program asks for a page and gets it back as text, with a reference on each element it can act on. It then clicks, types, scrolls, takes screenshots and so on, through [22 tools](docs/tools.md). The `rauli` command serves them to any program that speaks the Model Context Protocol, over standard input and output, and from a shell it can print a page or save a screenshot. A Go program can link them instead, through the `browser` package, and bring its own rules and keychain.
 
 Two things stand between the tools and the web. A rules engine decides which addresses the browser may reach and which actions need a person's approval, and a keychain hands a login to the page without the program ever seeing it. A live view shows the browser while it works and lets you take the tab over.
 

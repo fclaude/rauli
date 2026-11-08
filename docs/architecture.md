@@ -60,6 +60,8 @@ A person can take the browser with `Hold`, and give it back with `Release`. Call
 
 ## What sits beside it
 
+`browser` is the one package outside `internal/`. It gives a Go program the session, its tools and the Guard and Vault interfaces under their own names, as aliases of the types above, so a program that links Raulí sees what the command does and plugs in its own rules and keychain. The layers below it stay internal, and their types are reached only through those names and the methods on them.
+
 The rules engine lives in `internal/rules` and implements the Guard; the [Rules](rules.md) page covers it. The keychain is `internal/vault` and implements the Vault, and the [Keychain](keychain.md) page covers that. The command in `cmd/rauli` builds a session from a configuration file, using `internal/config`, and serves its tools over standard input and output, so an agent can use it without linking any Go. The live view in `internal/watch` is an HTTP handler that reads a session's events and shows its tab, and it uses `Hold` and `Release` for the moments when a person takes over. [Watching](watching.md) covers it.
 
 Recipes are Scheme files that Raulí runs with [Brote](https://fclaude.github.io/brote/). Every step a recipe takes is a call to one of the tools, so the rules and the keychain apply to it as they do to an agent. [Recipes](recipes.md) covers them.

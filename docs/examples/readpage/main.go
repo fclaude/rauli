@@ -1,4 +1,4 @@
-// Command readpage opens a web address with Raulí's tools, reads the page as
+// Command readpage opens a web address with Raulí's browser package, reads the page as
 // text, follows the first link on it and takes a screenshot.
 //
 //	go run ./docs/examples/readpage https://example.com out.png
@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/fclaude/rauli/internal/tools"
+	"github.com/fclaude/rauli/browser"
 )
 
 var firstRef = regexp.MustCompile(`link .*\[ref=(e\d+)\]`)
@@ -25,13 +25,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	s, err := tools.New(ctx, tools.Options{})
+	s, err := browser.New(ctx, browser.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.Close()
 
-	call := func(name string, args map[string]any) tools.Result {
+	call := func(name string, args map[string]any) browser.Result {
 		raw, _ := json.Marshal(args)
 		r, err := s.Call(ctx, name, raw)
 		if err != nil {
